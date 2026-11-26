@@ -1746,9 +1746,42 @@
         } catch (e) {}
       }
 
-      delete state.translationsCache[fullKey];
+      state.translationsCache[fullKey] = {
+        loading: false,
+        text: text
+      };
       rerenderActiveDynamicViews();
-      showToast('Çeviri şu an yapılamadı, tekrar deneyin.');
+      showToast('Çeviri servisine ulaşılamadı; orijinal metin gösteriliyor.');
+    }
+
+    function escapeAttr(str) {
+      return escapeHTML(JSON.stringify(String(str || '')));
+    }
+
+    function triggerTranslate(kind, id) {
+      if (kind === 'chat') {
+        const msg = state.chat.find(m => m.id === id);
+        if (msg) translateDynamicText(`chat-${msg.id}`, msg.text);
+      } else if (kind === 'photo-chat') {
+        const item = state.photoChat.find(p => p.id === id);
+        if (item && item.caption) translateDynamicText(`pchat-${item.id}`, item.caption);
+      } else if (kind === 'market') {
+        const item = state.market.find(l => l.id === id);
+        if (item) translateDynamicText(`lst-${item.id}`, `${item.title}${item.desc ? ' — ' + item.desc : ''}`);
+      }
+    }
+
+    function triggerReport(targetType, targetId) {
+      if (targetType === 'chat') {
+        const msg = state.chat.find(m => m.id === targetId);
+        if (msg) reportContent('chat', msg.id, `${msg.displayName} (@${msg.username}): ${msg.text}`);
+      } else if (targetType === 'photo-chat') {
+        const item = state.photoChat.find(p => p.id === targetId);
+        if (item) reportContent('photo-chat', item.id, `${item.displayName} (@${item.username}): ${item.caption || 'Monsuno'}`);
+      } else if (targetType === 'market') {
+        const item = state.market.find(l => l.id === targetId);
+        if (item) reportContent('market', item.id, `${item.title} (${item.ownerDisplayName})`);
+      }
     }
 
     function rerenderActiveDynamicViews() {
@@ -2395,11 +2428,11 @@
               </div>
             </div>
             <div class="flex items-center gap-1.5 shrink-0">
-              <button type="button" onclick="translateDynamicText('chat-${msg.id}', ${JSON.stringify(msg.text)})"
+              <button type="button" onclick="triggerTranslate('chat', '${escapeHTML(msg.id)}')"
                 class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-core-300 text-[11px] font-bold transition">
                 🌐 ${escapeHTML(t('translateBtn'))}
               </button>
-              <button type="button" onclick="reportContent('chat', '${msg.id}', ${JSON.stringify(`${msg.displayName} (@${msg.username}): ${msg.text}`)})"
+              <button type="button" onclick="triggerReport('chat', '${escapeHTML(msg.id)}')"
                 class="px-2.5 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 text-[11px] font-bold transition">
                 🚩 ${escapeHTML(t('reportBtn'))}
               </button>
@@ -2471,12 +2504,12 @@
               </div>
               <div class="flex items-center justify-end gap-1.5 pt-2">
                 ${item.caption ? `
-                  <button type="button" onclick="translateDynamicText('pchat-${item.id}', ${JSON.stringify(item.caption)})"
+                  <button type="button" onclick="triggerTranslate('photo-chat', '${escapeHTML(item.id)}')"
                     class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-core-300 text-xs font-bold">
                     🌐 ${escapeHTML(t('translateBtn'))}
                   </button>
                 ` : ''}
-                <button type="button" onclick="reportContent('photo-chat', '${item.id}', ${JSON.stringify(`${item.displayName} (@${item.username}): ${captionText}`)})"
+                <button type="button" onclick="triggerReport('photo-chat', '${escapeHTML(item.id)}')"
                   class="px-2.5 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 text-xs font-bold">
                   🚩 ${escapeHTML(t('reportBtn'))}
                 </button>
@@ -2615,11 +2648,11 @@
                   ${escapeHTML(item.ownerDisplayName)} ${verifiedBadgeHTML(item.ownerUsername)}
                 </button>
                 <div class="flex items-center gap-1.5">
-                  <button type="button" onclick="translateDynamicText('lst-${item.id}', ${JSON.stringify(fullListingText)})"
+                  <button type="button" onclick="triggerTranslate('market', '${escapeHTML(item.id)}')"
                     class="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-core-300 text-xs font-bold">
                     🌐 ${escapeHTML(t('translateBtn'))}
                   </button>
-                  <button type="button" onclick="reportContent('market', '${item.id}', ${JSON.stringify(`${item.title} (${item.ownerDisplayName})`)})"
+                  <button type="button" onclick="triggerReport('market', '${escapeHTML(item.id)}')"
                     class="px-2.5 py-1.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 text-xs font-bold">
                     🚩 ${escapeHTML(t('reportBtn'))}
                   </button>
@@ -2869,7 +2902,10 @@
     }
 
     function reportContent(targetType, targetId, summary) {
-      if (!state.user) return;
+      if (!state.user) {
+        showToast('Rapor göndermek için giriş yapmalısınız.');
+        return;
+      }
       state.reports.unshift({
         id: 'rep-' + Date.now(),
         targetType,
@@ -2881,6 +2917,9 @@
         time: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
       });
       saveState(true);
+      if (isOwner(state.user.username) && state.activeSection === 'admin') {
+        renderAdmin();
+      }
       showToast(t('reportSentToast'));
     }
 
