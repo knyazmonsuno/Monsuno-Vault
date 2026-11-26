@@ -715,6 +715,7 @@
         noChatMsg: 'Henüz mesaj yok. İlk mesajı sen gönder!',
         deleteBtn: 'Sil',
         translateBtn: 'Çevir',
+        hideTranslationBtn: 'Çeviriyi Kapat',
         translatingText: 'Çevriliyor...',
         translatedBadge: 'Çeviri',
         photoChatTitle: 'GLOBAL FOTO CHAT',
@@ -812,6 +813,7 @@
         noChatMsg: 'No messages yet. Be the first to say hello!',
         deleteBtn: 'Delete',
         translateBtn: 'Translate',
+        hideTranslationBtn: 'Hide Translation',
         translatingText: 'Translating...',
         translatedBadge: 'Translation',
         photoChatTitle: 'GLOBAL PHOTO CHAT',
@@ -909,6 +911,7 @@
         noChatMsg: 'Noch keine Nachrichten. Schreib die erste!',
         deleteBtn: 'Löschen',
         translateBtn: 'Übersetzen',
+        hideTranslationBtn: 'Übersetzung ausblenden',
         translatingText: 'Wird übersetzt...',
         translatedBadge: 'Übersetzung',
         photoChatTitle: 'GLOBALER FOTO-CHAT',
@@ -1006,6 +1009,7 @@
         noChatMsg: 'Сообщений пока нет. Напишите первым!',
         deleteBtn: 'Удалить',
         translateBtn: 'Перевести',
+        hideTranslationBtn: 'Скрыть перевод',
         translatingText: 'Перевод...',
         translatedBadge: 'Перевод',
         photoChatTitle: 'ОБЩИЙ ФОТО-ЧАТ',
@@ -1103,6 +1107,7 @@
         noChatMsg: 'لا توجد رسائل بعد. كن أول من يرسل!',
         deleteBtn: 'حذف',
         translateBtn: 'ترجمة',
+        hideTranslationBtn: 'إخفاء الترجمة',
         translatingText: 'جارٍ الترجمة...',
         translatedBadge: 'ترجمة',
         photoChatTitle: 'دردشة الصور العامة',
@@ -1200,6 +1205,7 @@
         noChatMsg: 'Aucun message pour le moment. Soyez le premier !',
         deleteBtn: 'Supprimer',
         translateBtn: 'Traduire',
+        hideTranslationBtn: 'Masquer la traduction',
         translatingText: 'Traduction...',
         translatedBadge: 'Traduction',
         photoChatTitle: 'CHAT PHOTO GLOBAL',
@@ -1297,6 +1303,7 @@
         noChatMsg: 'まだメッセージがありません。最初の投稿をしましょう！',
         deleteBtn: '削除',
         translateBtn: '翻訳',
+        hideTranslationBtn: '翻訳を閉じる',
         translatingText: '翻訳中...',
         translatedBadge: '翻訳',
         photoChatTitle: '全体フォトチャット',
@@ -1394,6 +1401,7 @@
         noChatMsg: '暂无消息，快来发送第一条吧！',
         deleteBtn: '删除',
         translateBtn: '翻译',
+        hideTranslationBtn: '隐藏译文',
         translatingText: '翻译中...',
         translatedBadge: '译文',
         photoChatTitle: '全球图片聊天',
@@ -1759,15 +1767,41 @@
     }
 
     function triggerTranslate(kind, id) {
+      const lang = TRANSLATIONS[state.lang] ? state.lang : 'tr';
+      let cacheId = '';
       if (kind === 'chat') {
         const msg = state.chat.find(m => m.id === id);
-        if (msg) translateDynamicText(`chat-${msg.id}`, msg.text);
+        if (!msg) return;
+        cacheId = `chat-${msg.id}`;
+        const fullKey = `${lang}::${cacheId}`;
+        if (state.translationsCache[fullKey] && !state.translationsCache[fullKey].loading) {
+          delete state.translationsCache[fullKey];
+          rerenderActiveDynamicViews();
+          return;
+        }
+        translateDynamicText(cacheId, msg.text);
       } else if (kind === 'photo-chat') {
         const item = state.photoChat.find(p => p.id === id);
-        if (item && item.caption) translateDynamicText(`pchat-${item.id}`, item.caption);
+        if (!item || !item.caption) return;
+        cacheId = `pchat-${item.id}`;
+        const fullKey = `${lang}::${cacheId}`;
+        if (state.translationsCache[fullKey] && !state.translationsCache[fullKey].loading) {
+          delete state.translationsCache[fullKey];
+          rerenderActiveDynamicViews();
+          return;
+        }
+        translateDynamicText(cacheId, item.caption);
       } else if (kind === 'market') {
         const item = state.market.find(l => l.id === id);
-        if (item) translateDynamicText(`lst-${item.id}`, `${item.title}${item.desc ? ' — ' + item.desc : ''}`);
+        if (!item) return;
+        cacheId = `lst-${item.id}`;
+        const fullKey = `${lang}::${cacheId}`;
+        if (state.translationsCache[fullKey] && !state.translationsCache[fullKey].loading) {
+          delete state.translationsCache[fullKey];
+          rerenderActiveDynamicViews();
+          return;
+        }
+        translateDynamicText(cacheId, `${item.title}${item.desc ? ' — ' + item.desc : ''}`);
       }
     }
 
@@ -2430,7 +2464,7 @@
             <div class="flex items-center gap-1.5 shrink-0">
               <button type="button" onclick="triggerTranslate('chat', '${escapeHTML(msg.id)}')"
                 class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-core-300 text-[11px] font-bold transition">
-                🌐 ${escapeHTML(t('translateBtn'))}
+                🌐 ${escapeHTML(trEntry && !trEntry.loading ? t('hideTranslationBtn') : t('translateBtn'))}
               </button>
               <button type="button" onclick="triggerReport('chat', '${escapeHTML(msg.id)}')"
                 class="px-2.5 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 text-[11px] font-bold transition">
@@ -2506,7 +2540,7 @@
                 ${item.caption ? `
                   <button type="button" onclick="triggerTranslate('photo-chat', '${escapeHTML(item.id)}')"
                     class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-core-300 text-xs font-bold">
-                    🌐 ${escapeHTML(t('translateBtn'))}
+                    🌐 ${escapeHTML(trEntry && !trEntry.loading ? t('hideTranslationBtn') : t('translateBtn'))}
                   </button>
                 ` : ''}
                 <button type="button" onclick="triggerReport('photo-chat', '${escapeHTML(item.id)}')"
@@ -2650,7 +2684,7 @@
                 <div class="flex items-center gap-1.5">
                   <button type="button" onclick="triggerTranslate('market', '${escapeHTML(item.id)}')"
                     class="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-core-300 text-xs font-bold">
-                    🌐 ${escapeHTML(t('translateBtn'))}
+                    🌐 ${escapeHTML(trEntry && !trEntry.loading ? t('hideTranslationBtn') : t('translateBtn'))}
                   </button>
                   <button type="button" onclick="triggerReport('market', '${escapeHTML(item.id)}')"
                     class="px-2.5 py-1.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 text-xs font-bold">
