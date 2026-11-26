@@ -1540,7 +1540,7 @@
         } catch (e) {
           updateLiveSyncButton(false);
         }
-      }, 250);
+      }, 60);
     }
 
     let isPullingRemote = false;
@@ -2998,7 +2998,7 @@
       updateLiveSyncButton(Boolean(getNormalizedDatabaseURL()));
       if (getNormalizedDatabaseURL()) {
         pullRemoteSharedState(false);
-        setInterval(() => pullRemoteSharedState(false), 4000);
+        setInterval(() => pullRemoteSharedState(false), 1000);
       }
       if (state.user) {
         bootAuthenticatedApp();
