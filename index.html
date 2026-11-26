@@ -69,6 +69,7 @@
           <p class="text-xs text-slate-400">Global Koleksiyoner Topluluğu</p>
         </div>
       </div>
+
       <!-- Giriş / Kayıt Sekmeleri -->
       <div class="grid grid-cols-2 gap-2 p-1 rounded-2xl bg-slate-950 border border-slate-800 mb-6">
         <button id="auth-tab-login" type="button" onclick="switchAuthTab('login')" data-i18n="loginButton"
@@ -133,20 +134,26 @@
         </button>
       </form>
 
-      <!-- Dil Seçici -->
-      <div class="mt-5 pt-4 border-t border-slate-800/80 flex items-center justify-between gap-2">
-        <label for="lang-select-auth" data-i18n="languageLabel" class="text-xs font-semibold text-slate-400">Dil / Language</label>
-        <select id="lang-select-auth" onchange="setLanguage(this.value)"
-          class="px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-700 text-xs font-bold text-white focus:outline-none focus:border-core-400">
-          <option value="tr">Türkçe</option>
-          <option value="en">English</option>
-          <option value="de">Deutsch</option>
-          <option value="ru">Русский</option>
-          <option value="ar">العربية</option>
-          <option value="fr">Français</option>
-          <option value="ja">日本語</option>
-          <option value="zh">中文</option>
-        </select>
+      <!-- Dil Seçici & Canlı Bağlantı -->
+      <div class="mt-5 pt-4 border-t border-slate-800/80 space-y-3">
+        <div class="flex items-center justify-between gap-2">
+          <label for="lang-select-auth" data-i18n="languageLabel" class="text-xs font-semibold text-slate-400">Dil / Language</label>
+          <select id="lang-select-auth" onchange="setLanguage(this.value)"
+            class="px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-700 text-xs font-bold text-white focus:outline-none focus:border-core-400">
+            <option value="tr">Türkçe</option>
+            <option value="en">English</option>
+            <option value="de">Deutsch</option>
+            <option value="ru">Русский</option>
+            <option value="ar">العربية</option>
+            <option value="fr">Français</option>
+            <option value="ja">日本語</option>
+            <option value="zh">中文</option>
+          </select>
+        </div>
+        <button type="button" onclick="openLiveSyncModal()"
+          class="w-full py-2 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-[11px] font-bold text-emerald-300 transition">
+          🌐 Canlı Bağlantı Ayarları
+        </button>
       </div>
     </div>
   </div>
@@ -204,6 +211,10 @@
 
         <!-- Kullanıcı Bilgisi ve Aksiyonlar -->
         <div class="w-full lg:w-auto flex flex-wrap items-center justify-between lg:justify-end gap-2">
+          <button id="live-sync-status-btn" type="button" onclick="openLiveSyncModal()"
+            class="px-2.5 py-2 rounded-xl text-xs font-bold bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700 transition">
+            🌐 Çevrimdışı
+          </button>
           <select id="lang-select-app" onchange="setLanguage(this.value)" aria-label="Dil Seçimi"
             class="px-2.5 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs font-bold text-white focus:outline-none focus:border-core-400">
             <option value="tr">TR</option>
@@ -417,7 +428,6 @@
 
       <!-- ADMIN PANELİ (SADECE knyazmonsuno) -->
       <section id="section-admin" class="hidden space-y-6">
-        <!-- Bekleyen Fotoğraf Onayları -->
         <div class="glass-panel rounded-3xl p-4 sm:p-6 border border-amber-500/30 space-y-4">
           <div class="flex items-center justify-between">
             <div>
@@ -428,7 +438,6 @@
           <div id="admin-queue-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
         </div>
 
-        <!-- Kayıtlı Kullanıcılar, Ban ve Hesap Yönetimi -->
         <div class="glass-panel rounded-3xl p-4 sm:p-6 border border-slate-800 space-y-4">
           <div>
             <h2 class="font-display font-extrabold text-lg text-white">KAYITLI KOLEKSİYONERLER &amp; BAN YÖNETİMİ</h2>
@@ -437,13 +446,41 @@
           <div id="admin-users-list" class="grid grid-cols-1 md:grid-cols-2 gap-3"></div>
         </div>
 
-        <!-- Gelen Ticketlar -->
         <div class="glass-panel rounded-3xl p-4 sm:p-6 border border-slate-800 space-y-4">
           <h2 class="font-display font-extrabold text-lg text-white">GELEN KULLANICI TICKETLARI</h2>
           <div id="admin-tickets-list" class="space-y-2.5"></div>
         </div>
       </section>
     </main>
+  </div>
+
+  <!-- Canlı Bağlantı Modalı -->
+  <div id="live-sync-modal" class="hidden fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="glass-panel w-full max-w-md rounded-3xl p-5 sm:p-6 border border-slate-700 space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+        <h3 class="font-display font-black text-sm text-white">CANLI VERİTABANI BAĞLANTISI</h3>
+        <button type="button" onclick="closeModal('live-sync-modal')" class="px-2.5 py-1 rounded-lg bg-slate-800 text-xs font-bold text-slate-300">✕</button>
+      </div>
+      <p class="text-xs text-slate-400 leading-relaxed">
+        Firebase Realtime Database URL'ni girdiğinde ticket, rapor, ilan, mesaj ve vitrin değişiklikleri tüm cihazlarda gerçek zamanlı senkronize olur.
+      </p>
+      <form onsubmit="handleSaveLiveSync(event)" class="space-y-3">
+        <div>
+          <label for="live-db-url-input" class="block text-xs font-semibold text-slate-300 mb-1">Realtime Database URL</label>
+          <input id="live-db-url-input" type="url" placeholder="https://proje-adi-default-rtdb.firebaseio.com"
+            class="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white" />
+        </div>
+        <div class="flex items-center justify-between gap-2 pt-1">
+          <button type="button" onclick="clearLiveSync()" class="px-3.5 py-2 rounded-xl bg-rose-500/15 text-rose-300 text-xs font-bold">
+            Bağlantıyı Kaldır
+          </button>
+          <div class="flex items-center gap-2">
+            <button type="button" onclick="closeModal('live-sync-modal')" class="px-3.5 py-2 rounded-xl bg-slate-800 text-xs font-bold text-slate-300">İptal</button>
+            <button type="submit" class="px-4 py-2 rounded-xl bg-emerald-500 text-xs font-extrabold text-slate-950">Kaydet ve Bağlan</button>
+          </div>
+        </div>
+      </form>
+    </div>
   </div>
 
   <!-- Parça Doğrulama / Tik Modalı -->
@@ -613,6 +650,7 @@
   <script>
     const OWNER_USERNAME = 'knyazmonsuno';
     const OWNER_PASSWORD = 'knyazsuno58';
+    const DEFAULT_LIVE_DB_URL = 'https://monsuno-vault-default-rtdb.firebaseio.com';
 
     const CURRENCY_SYMBOLS = {
       TL: '₺',
@@ -691,11 +729,6 @@
         slotCards: 'Cards',
         slotNone: 'YOK',
         noCharFound: 'Aramanıza uygun karakter bulunamadı.',
-        statusApproved: 'Onaylı (✓)',
-        statusPending: 'Yönetici Onayı Bekliyor',
-        statusNone: 'Henüz Doğrulanmadı',
-        removeOwnTickBtn: 'Kendi Koleksiyonumdan Tiki Kaldır',
-        sendPhotoBtn: 'Fotoğraf Gönder',
         chatTitle: 'GLOBAL KOLEKSİYONER SOHBETİ',
         chatSubtitle: 'Kullanıcı adına tıklayarak profilini ve koleksiyon tamamlama oranını inceleyebilirsin.',
         chatInputPlaceholder: 'Koleksiyonculara mesaj yaz...',
@@ -740,7 +773,6 @@
         ticketOptOther: 'Diğer Talep',
         ticketDetailPlaceholder: 'Yeni talep edilen bilgi / açıklama...',
         sendTicketBtn: 'Ticket Gönder',
-        noTicketMsg: 'Henüz oluşturulmuş bir ticket talebin yok.',
         reportBtn: 'Raporla',
         reportSentToast: 'Rapor site yöneticisine iletildi.',
         reportsAdminTitle: 'GELEN KULLANICI RAPORLARI',
@@ -794,11 +826,6 @@
         slotCards: 'Cards',
         slotNone: 'NONE',
         noCharFound: 'No characters matched your search.',
-        statusApproved: 'Approved (✓)',
-        statusPending: 'Pending Admin Approval',
-        statusNone: 'Not Verified Yet',
-        removeOwnTickBtn: 'Remove Tick From My Collection',
-        sendPhotoBtn: 'Send Photo',
         chatTitle: 'GLOBAL COLLECTOR CHAT',
         chatSubtitle: 'Click on any username to view their profile and collection progress.',
         chatInputPlaceholder: 'Write a message to collectors...',
@@ -843,7 +870,6 @@
         ticketOptOther: 'Other Request',
         ticketDetailPlaceholder: 'Requested new details / description...',
         sendTicketBtn: 'Submit Ticket',
-        noTicketMsg: 'You have not created any tickets yet.',
         reportBtn: 'Report',
         reportSentToast: 'Report sent to the site administrator.',
         reportsAdminTitle: 'SUBMITTED USER REPORTS',
@@ -855,582 +881,6 @@
         supportDesc: 'Reach us via our official Instagram account for password resets, verification, rare item advice and community updates.',
         officialIgLabel: 'Official Instagram Account',
         openIgBtn: 'Open on Instagram (@monsunoglobal)'
-      },
-      de: {
-        langName: 'Deutsch',
-        loginUsernameLabel: 'Benutzername',
-        loginUsernamePlaceholder: 'Benutzername',
-        loginPasswordLabel: 'Passwort',
-        forgotPasswordLink: 'Passwort vergessen',
-        loginButton: 'Anmelden',
-        registerTab: 'Registrieren',
-        regUsernameLabel: 'Benutzername',
-        regUsernamePlaceholder: 'Benutzername',
-        regDisplayNameLabel: 'Anzeigename',
-        regDisplayNamePlaceholder: 'Anzeigename',
-        regPasswordLabel: 'Passwort',
-        registerNoteWarning: 'Bitte notieren Sie Ihre Daten, Sie können sie später nicht ändern.',
-        registerButton: 'Registrieren & Starten',
-        languageLabel: 'Sprache',
-        headerSub: 'Sammlung • Chat • Markt',
-        navCollection: 'Sammlung',
-        navChat: 'Globaler Chat',
-        navPhotoChat: 'Foto-Chat',
-        navLeaderboard: 'Rangliste',
-        navMarket: 'Markt',
-        navTickets: 'Tickets',
-        navSupport: 'Support & Kontakt',
-        navAdmin: 'Admin-Bereich',
-        editProfileBtn: 'Profil bearbeiten',
-        logoutBtn: 'Abmelden',
-        showcaseTitle: 'MONSUNO VITRINE & SAMMLUNG',
-        showcaseSubtitle: 'Lade Fotos von Figur, Kapsel und Karten zur Admin-Prüfung hoch; jeder vollständige Charakter zählt als +1 Monsuno.',
-        completedMonsunoLabel: 'Abgeschlossene Monsunos:',
-        completionLabel: 'Fortschritt:',
-        addShowcaseBtn: '+ Hinzufügen',
-        editShowcaseBtn: '✏️ Vitrine bearbeiten',
-        searchShowcasePlaceholder: 'Vitrine durchsuchen (z.B. LOCK)...',
-        filterAll: 'Alle',
-        verifyOrEdit: 'Prüfen / Bearbeiten',
-        slotFigure: 'Figur',
-        slotCapsule: 'Kapsel',
-        slotCards: 'Karten',
-        slotNone: 'KEINE',
-        noCharFound: 'Keine Charaktere gefunden.',
-        statusApproved: 'Bestätigt (✓)',
-        statusPending: 'Wartet auf Bestätigung',
-        statusNone: 'Noch nicht bestätigt',
-        removeOwnTickBtn: 'Häkchen aus meiner Sammlung entfernen',
-        sendPhotoBtn: 'Foto senden',
-        chatTitle: 'GLOBALER SAMMLER-CHAT',
-        chatSubtitle: 'Klicke auf einen Benutzernamen, um Profil und Sammlungsfortschritt anzusehen.',
-        chatInputPlaceholder: 'Nachricht an Sammler schreiben...',
-        sendBtn: 'Senden',
-        noChatMsg: 'Noch keine Nachrichten.',
-        deleteBtn: 'Löschen',
-        translateBtn: 'Übersetzen',
-        translatingText: 'Übersetze...',
-        translatedBadge: 'Übersetzung',
-        photoChatTitle: 'GLOBALER FOTO-CHAT',
-        photoChatSubtitle: 'Teile Fotos deiner Figuren, Kapseln und Karten mit der Community.',
-        photoChatPlaceholder: 'Fotobeschreibung...',
-        sharePhotoBtn: 'Foto teilen',
-        noPhotoMsg: 'Noch keine Fotos geteilt.',
-        leaderboardTitle: 'SAMMLER-RANGLISTE',
-        leaderboardSubtitle: 'Sortiert nach abgeschlossenen Monsunos und Sammlungsfortschritt.',
-        completedSuffix: 'Abgeschlossen',
-        marketTitle: 'TAUSCH- & VERKAUFSMARKT',
-        marketSubtitle: 'Teile Fotos und Links für doppelte oder gesuchte Teile.',
-        marketAll: 'Alle Angebote',
-        marketWanted: 'Gesucht',
-        marketMine: 'Meine Angebote',
-        marketCreateBtn: '+ Angebot erstellen',
-        noMarketMsg: 'Keine Angebote in dieser Kategorie.',
-        typeTrade: 'Tausch',
-        typeSale: 'Verkauf',
-        typeWanted: 'Gesucht',
-        createListingTitle: 'NEUES MARKTANGEBOT',
-        listingTitleLabel: 'Titel',
-        listingTypeLabel: 'Typ',
-        listingCurrencyLabel: 'Währung',
-        listingPriceLabel: 'Preis / Hinweis',
-        listingLinkLabel: 'Link / Kontakt (Optional)',
-        listingPhotoLabel: 'Produktfoto',
-        listingDescLabel: 'Beschreibung',
-        cancelBtn: 'Abbrechen',
-        publishBtn: 'Veröffentlichen',
-        ticketsTitle: 'KONTO- & SUPPORT-TICKETS',
-        ticketsSubtitle: 'Sende Anfragen zur Änderung von Benutzername oder Passwort an den Administrator.',
-        ticketOptUsername: 'Benutzername ändern',
-        ticketOptPassword: 'Passwort ändern',
-        ticketOptOther: 'Sonstige Anfrage',
-        ticketDetailPlaceholder: 'Gewünschte Änderung / Beschreibung...',
-        sendTicketBtn: 'Ticket senden',
-        noTicketMsg: 'Noch keine Tickets erstellt.',
-        supportTitle: 'SUPPORT & KONTAKT',
-        supportDesc: 'Kontaktiere uns über Instagram für Passwort-Reset, Verifizierung und Community-News.',
-        officialIgLabel: 'Offizieller Instagram-Account',
-        openIgBtn: 'Auf Instagram öffnen (@monsunoglobal)'
-      },
-      ru: {
-        langName: 'Русский',
-        loginUsernameLabel: 'Имя пользователя',
-        loginUsernamePlaceholder: 'Имя пользователя',
-        loginPasswordLabel: 'Пароль',
-        forgotPasswordLink: 'Забыли пароль',
-        loginButton: 'Войти',
-        registerTab: 'Регистрация',
-        regUsernameLabel: 'Имя пользователя',
-        regUsernamePlaceholder: 'Имя пользователя',
-        regDisplayNameLabel: 'Отображаемое имя',
-        regDisplayNamePlaceholder: 'Отображаемое имя',
-        regPasswordLabel: 'Пароль',
-        registerNoteWarning: 'Пожалуйста, запишите свои данные, позже изменить их нельзя.',
-        registerButton: 'Регистрация',
-        languageLabel: 'Язык',
-        headerSub: 'Коллекция • Чат • Рынок',
-        navCollection: 'Коллекция',
-        navChat: 'Общий чат',
-        navPhotoChat: 'Фото-чат',
-        navLeaderboard: 'Рейтинг',
-        navMarket: 'Рынок',
-        navTickets: 'Тикеты',
-        navSupport: 'Поддержка',
-        navAdmin: 'Админ-панель',
-        editProfileBtn: 'Профиль',
-        logoutBtn: 'Выйти',
-        showcaseTitle: 'ВИТРИНА И КОЛЛЕКЦИЯ MONSUNO',
-        showcaseSubtitle: 'Загружайте фото фигурки, капсулы и карт на проверку; каждый собранный персонаж дает +1 Monsuno.',
-        completedMonsunoLabel: 'Собрано Monsuno:',
-        completionLabel: 'Прогресс:',
-        addShowcaseBtn: '+ Добавить',
-        editShowcaseBtn: '✏️ Редактировать',
-        searchShowcasePlaceholder: 'Поиск по витрине (напр. LOCK)...',
-        filterAll: 'Все',
-        verifyOrEdit: 'Подтвердить / Изменить',
-        slotFigure: 'Фигурка',
-        slotCapsule: 'Капсула',
-        slotCards: 'Карты',
-        slotNone: 'НЕТ',
-        noCharFound: 'Персонажи не найдены.',
-        statusApproved: 'Подтверждено (✓)',
-        statusPending: 'Ожидает проверки',
-        statusNone: 'Не подтверждено',
-        removeOwnTickBtn: 'Убрать отметку из коллекции',
-        sendPhotoBtn: 'Отправить фото',
-        chatTitle: 'ОБЩИЙ ЧАТ КОЛЛЕКЦИОНЕРОВ',
-        chatSubtitle: 'Нажмите на имя пользователя, чтобы посмотреть его профиль и коллекцию.',
-        chatInputPlaceholder: 'Написать сообщение...',
-        sendBtn: 'Отправить',
-        noChatMsg: 'Сообщений пока нет.',
-        deleteBtn: 'Удалить',
-        translateBtn: 'Перевести',
-        translatingText: 'Перевод...',
-        translatedBadge: 'Перевод',
-        photoChatTitle: 'ОБЩИЙ ФОТО-ЧАТ',
-        photoChatSubtitle: 'Делитесь фотографиями фигурок, капсул и карт.',
-        photoChatPlaceholder: 'Описание фото...',
-        sharePhotoBtn: 'Поделиться фото',
-        noPhotoMsg: 'Фотографий пока нет.',
-        leaderboardTitle: 'РЕЙТИНГ КОЛЛЕКЦИОНЕРОВ',
-        leaderboardSubtitle: 'Сортировка по количеству собранных Monsuno и проценту коллекции.',
-        completedSuffix: 'Собрано',
-        marketTitle: 'РЫНОК ОБМЕНА И ПРОДАЖИ',
-        marketSubtitle: 'Делитесь фото и ссылками для обмена, продажи или поиска.',
-        marketAll: 'Все объявления',
-        marketWanted: 'Ищу',
-        marketMine: 'Мои объявления',
-        marketCreateBtn: '+ Создать',
-        noMarketMsg: 'В этой категории пока нет объявлений.',
-        typeTrade: 'Обмен',
-        typeSale: 'Продажа',
-        typeWanted: 'Ищу',
-        createListingTitle: 'НОВОЕ ОБЪЯВЛЕНИЕ',
-        listingTitleLabel: 'Название',
-        listingTypeLabel: 'Тип',
-        listingCurrencyLabel: 'Валюта',
-        listingPriceLabel: 'Цена / Заметка',
-        listingLinkLabel: 'Ссылка (необязательно)',
-        listingPhotoLabel: 'Фото товара',
-        listingDescLabel: 'Описание',
-        cancelBtn: 'Отмена',
-        publishBtn: 'Опубликовать',
-        ticketsTitle: 'ТИКЕТЫ ПОДДЕРЖКИ',
-        ticketsSubtitle: 'Отправьте запрос администратору на смену имени пользователя или пароля.',
-        ticketOptUsername: 'Смена имени пользователя',
-        ticketOptPassword: 'Смена пароля',
-        ticketOptOther: 'Другой запрос',
-        ticketDetailPlaceholder: 'Новая информация / описание...',
-        sendTicketBtn: 'Отправить тикет',
-        noTicketMsg: 'У вас пока нет тикетов.',
-        supportTitle: 'ПОДДЕРЖКА И КОНТАКТЫ',
-        supportDesc: 'Свяжитесь с нами в официальном Instagram для сброса пароля и вопросов по коллекции.',
-        officialIgLabel: 'Официальный Instagram',
-        openIgBtn: 'Открыть в Instagram (@monsunoglobal)'
-      },
-      ar: {
-        langName: 'العربية',
-        loginUsernameLabel: 'اسم المستخدم',
-        loginUsernamePlaceholder: 'اسم المستخدم',
-        loginPasswordLabel: 'كلمة المرور',
-        forgotPasswordLink: 'نسيت كلمة المرور',
-        loginButton: 'تسجيل الدخول',
-        registerTab: 'إنشاء حساب',
-        regUsernameLabel: 'اسم المستخدم',
-        regUsernamePlaceholder: 'اسم المستخدم',
-        regDisplayNameLabel: 'الاسم الظاهر',
-        regDisplayNamePlaceholder: 'الاسم الظاهر',
-        regPasswordLabel: 'كلمة المرور',
-        registerNoteWarning: 'يرجى تدوين بياناتك؛ لا يمكنك تغييرها لاحقًا.',
-        registerButton: 'إنشاء حساب',
-        languageLabel: 'اللغة',
-        headerSub: 'المجموعة • الدردشة • السوق',
-        navCollection: 'مجموعتي',
-        navChat: 'الدردشة العامة',
-        navPhotoChat: 'دردشة الصور',
-        navLeaderboard: 'المتصدرون',
-        navMarket: 'السوق',
-        navTickets: 'التذاكر',
-        navSupport: 'الدعم والتواصل',
-        navAdmin: 'لوحة الإدارة',
-        editProfileBtn: 'تعديل الملف',
-        logoutBtn: 'خروج',
-        showcaseTitle: 'معرض ومجموعة MONSUNO',
-        showcaseSubtitle: 'ارفع صور المجسم والكبسولة والبطاقات للمراجعة؛ كل شخصية مكتملة تحسب +1 Monsuno.',
-        completedMonsunoLabel: 'Monsuno المكتملة:',
-        completionLabel: 'نسبة الإكمال:',
-        addShowcaseBtn: '+ إضافة للمعرض',
-        editShowcaseBtn: '✏️ تعديل المعرض',
-        searchShowcasePlaceholder: 'ابحث في المعرض (مثال: LOCK)...',
-        filterAll: 'الكل',
-        verifyOrEdit: 'تأكيد / تعديل',
-        slotFigure: 'مجسم',
-        slotCapsule: 'كبسولة',
-        slotCards: 'بطاقات',
-        slotNone: 'لا يوجد',
-        noCharFound: 'لم يتم العثور على شخصيات.',
-        statusApproved: 'مؤكد (✓)',
-        statusPending: 'بانتظار موافقة الإدارة',
-        statusNone: 'غير مؤكد بعد',
-        removeOwnTickBtn: 'إزالة العلامة من مجموعتي',
-        sendPhotoBtn: 'إرسال الصورة',
-        chatTitle: 'دردشة هواة الجمع العامة',
-        chatSubtitle: 'اضغط على اسم المستخدم لعرض ملفه ونسبة إكمال مجموعته.',
-        chatInputPlaceholder: 'اكتب رسالة لهواة الجمع...',
-        sendBtn: 'إرسال',
-        noChatMsg: 'لا توجد رسائل بعد.',
-        deleteBtn: 'حذف',
-        translateBtn: 'ترجمة',
-        translatingText: 'جارٍ الترجمة...',
-        translatedBadge: 'ترجمة',
-        photoChatTitle: 'دردشة الصور العامة',
-        photoChatSubtitle: 'شارك صور المجسمات والكبسولات والبطاقات مع المجتمع.',
-        photoChatPlaceholder: 'وصف الصورة...',
-        sharePhotoBtn: 'مشاركة الصورة',
-        noPhotoMsg: 'لم تتم مشاركة صور بعد.',
-        leaderboardTitle: 'لوحة متصدري هواة الجمع',
-        leaderboardSubtitle: 'الترتيب حسب عدد Monsuno المكتملة ونسبة الإكمال.',
-        completedSuffix: 'مكتمل',
-        marketTitle: 'سوق التبادل والبيع',
-        marketSubtitle: 'شارك الصور والروابط للقطع المعروضة أو المطلوبة.',
-        marketAll: 'الكل',
-        marketWanted: 'مطلوب',
-        marketMine: 'إعلاناتي',
-        marketCreateBtn: '+ إضافة إعلان',
-        noMarketMsg: 'لا توجد إعلانات في هذا القسم.',
-        typeTrade: 'للتبادل',
-        typeSale: 'للبيع',
-        typeWanted: 'مطلوب',
-        createListingTitle: 'إعلان جديد',
-        listingTitleLabel: 'العنوان',
-        listingTypeLabel: 'النوع',
-        listingCurrencyLabel: 'العملة',
-        listingPriceLabel: 'السعر / ملاحظة',
-        listingLinkLabel: 'رابط الإعلان (اختياري)',
-        listingPhotoLabel: 'صورة المنتج',
-        listingDescLabel: 'الوصف',
-        cancelBtn: 'إلغاء',
-        publishBtn: 'نشر',
-        ticketsTitle: 'تذاكر الحساب والدعم',
-        ticketsSubtitle: 'أرسل طلبات تغيير اسم المستخدم أو كلمة المرور إلى مدير الموقع.',
-        ticketOptUsername: 'تغيير اسم المستخدم',
-        ticketOptPassword: 'تغيير كلمة المرور',
-        ticketOptOther: 'طلب آخر',
-        ticketDetailPlaceholder: 'المعلومات الجديدة المطلوبة / الوصف...',
-        sendTicketBtn: 'إرسال التذكرة',
-        noTicketMsg: 'لم تقم بإنشاء أي تذاكر بعد.',
-        supportTitle: 'الدعم والتواصل',
-        supportDesc: 'تواصل معنا عبر حساب إنستغرام الرسمي لاستعادة كلمة المرور والاستفسارات.',
-        officialIgLabel: 'حساب إنستغرام الرسمي',
-        openIgBtn: 'افتح في إنستغرام (@monsunoglobal)'
-      },
-      fr: {
-        langName: 'Français',
-        loginUsernameLabel: 'Nom d’utilisateur',
-        loginUsernamePlaceholder: 'Nom d’utilisateur',
-        loginPasswordLabel: 'Mot de passe',
-        forgotPasswordLink: 'Mot de passe oublié',
-        loginButton: 'Connexion',
-        registerTab: 'Inscription',
-        regUsernameLabel: 'Nom d’utilisateur',
-        regUsernamePlaceholder: 'Nom d’utilisateur',
-        regDisplayNameLabel: 'Nom affiché',
-        regDisplayNamePlaceholder: 'Nom affiché',
-        regPasswordLabel: 'Mot de passe',
-        registerNoteWarning: 'Veuillez noter vos informations, vous ne pourrez plus les modifier ensuite.',
-        registerButton: 'S’inscrire',
-        languageLabel: 'Langue',
-        headerSub: 'Collection • Chat • Marché',
-        navCollection: 'Collection',
-        navChat: 'Chat Global',
-        navPhotoChat: 'Chat Photo',
-        navLeaderboard: 'Classement',
-        navMarket: 'Marché',
-        navTickets: 'Tickets',
-        navSupport: 'Support',
-        navAdmin: 'Admin',
-        editProfileBtn: 'Modifier Profil',
-        logoutBtn: 'Déconnexion',
-        showcaseTitle: 'VITRINE & COLLECTION MONSUNO',
-        showcaseSubtitle: 'Envoyez les photos de Figurine, Capsule et Cartes pour validation ; chaque personnage complet compte +1 Monsuno.',
-        completedMonsunoLabel: 'Monsunos complets :',
-        completionLabel: 'Progression :',
-        addShowcaseBtn: '+ Ajouter',
-        editShowcaseBtn: '✏️ Modifier Vitrine',
-        searchShowcasePlaceholder: 'Rechercher (ex: LOCK)...',
-        filterAll: 'Tout',
-        verifyOrEdit: 'Vérifier / Modifier',
-        slotFigure: 'Figurine',
-        slotCapsule: 'Capsule',
-        slotCards: 'Cartes',
-        slotNone: 'AUCUN',
-        noCharFound: 'Aucun personnage trouvé.',
-        statusApproved: 'Approuvé (✓)',
-        statusPending: 'En attente de validation',
-        statusNone: 'Non vérifié',
-        removeOwnTickBtn: 'Retirer la coche de ma collection',
-        sendPhotoBtn: 'Envoyer Photo',
-        chatTitle: 'CHAT GLOBAL DES COLLECTIONNEURS',
-        chatSubtitle: 'Cliquez sur un utilisateur pour voir son profil et sa progression.',
-        chatInputPlaceholder: 'Écrire un message...',
-        sendBtn: 'Envoyer',
-        noChatMsg: 'Aucun message pour le moment.',
-        deleteBtn: 'Supprimer',
-        translateBtn: 'Traduire',
-        translatingText: 'Traduction...',
-        translatedBadge: 'Traduction',
-        photoChatTitle: 'CHAT PHOTO GLOBAL',
-        photoChatSubtitle: 'Partagez les photos de vos figurines, capsules et cartes.',
-        photoChatPlaceholder: 'Légende de la photo...',
-        sharePhotoBtn: 'Partager Photo',
-        noPhotoMsg: 'Aucune photo partagée.',
-        leaderboardTitle: 'CLASSEMENT DES COLLECTIONNEURS',
-        leaderboardSubtitle: 'Classé par Monsunos complets et pourcentage de collection.',
-        completedSuffix: 'Complété',
-        marketTitle: 'MARCHÉ D’ÉCHANGE & VENTE',
-        marketSubtitle: 'Partagez photos et liens pour vos doubles ou recherches.',
-        marketAll: 'Tout',
-        marketWanted: 'Recherché',
-        marketMine: 'Mes Annonces',
-        marketCreateBtn: '+ Publier',
-        noMarketMsg: 'Aucune annonce dans cette catégorie.',
-        typeTrade: 'Échange',
-        typeSale: 'Vente',
-        typeWanted: 'Recherché',
-        createListingTitle: 'NOUVELLE ANNONCE',
-        listingTitleLabel: 'Titre',
-        listingTypeLabel: 'Type',
-        listingCurrencyLabel: 'Devise',
-        listingPriceLabel: 'Prix / Note',
-        listingLinkLabel: 'Lien (Optionnel)',
-        listingPhotoLabel: 'Photo',
-        listingDescLabel: 'Description',
-        cancelBtn: 'Annuler',
-        publishBtn: 'Publier',
-        ticketsTitle: 'TICKETS DE SUPPORT',
-        ticketsSubtitle: 'Envoyez vos demandes de changement de pseudo ou mot de passe à l’administrateur.',
-        ticketOptUsername: 'Changement de pseudo',
-        ticketOptPassword: 'Changement de mot de passe',
-        ticketOptOther: 'Autre demande',
-        ticketDetailPlaceholder: 'Nouvelle information / description...',
-        sendTicketBtn: 'Envoyer Ticket',
-        noTicketMsg: 'Aucun ticket créé.',
-        supportTitle: 'SUPPORT & CONTACT',
-        supportDesc: 'Contactez-nous via Instagram officiel pour la réinitialisation de mot de passe et vos questions.',
-        officialIgLabel: 'Compte Instagram Officiel',
-        openIgBtn: 'Ouvrir sur Instagram (@monsunoglobal)'
-      },
-      ja: {
-        langName: '日本語',
-        loginUsernameLabel: 'ユーザー名',
-        loginUsernamePlaceholder: 'ユーザー名',
-        loginPasswordLabel: 'パスワード',
-        forgotPasswordLink: 'パスワードをお忘れですか',
-        loginButton: 'ログイン',
-        registerTab: '新規登録',
-        regUsernameLabel: 'ユーザー名',
-        regUsernamePlaceholder: 'ユーザー名',
-        regDisplayNameLabel: '表示名',
-        regDisplayNamePlaceholder: '表示名',
-        regPasswordLabel: 'パスワード',
-        registerNoteWarning: '登録情報はメモしてください。後から変更することはできません。',
-        registerButton: '登録して開始',
-        languageLabel: '言語',
-        headerSub: 'コレクション • チャット • マーケット',
-        navCollection: 'コレクション',
-        navChat: '全体チャット',
-        navPhotoChat: 'フォトチャット',
-        navLeaderboard: 'ランキング',
-        navMarket: 'マーケット',
-        navTickets: 'チケット',
-        navSupport: 'サポート',
-        navAdmin: '管理パネル',
-        editProfileBtn: 'プロフィール編集',
-        logoutBtn: 'ログアウト',
-        showcaseTitle: 'MONSUNO ショーケース＆コレクション',
-        showcaseSubtitle: 'フィギュア、カプセル、カードの写真をアップロードして承認を受けると、完了ごとに +1 Monsuno カウントされます。',
-        completedMonsunoLabel: '完了したMonsuno:',
-        completionLabel: '達成率:',
-        addShowcaseBtn: '+ ショーケース追加',
-        editShowcaseBtn: '✏️ ショーケース編集',
-        searchShowcasePlaceholder: '検索 (例: LOCK)...',
-        filterAll: 'すべて',
-        verifyOrEdit: '認証 / 編集',
-        slotFigure: 'フィギュア',
-        slotCapsule: 'カプセル',
-        slotCards: 'カード',
-        slotNone: 'なし',
-        noCharFound: '一致するキャラクターが見つかりません。',
-        statusApproved: '承認済み (✓)',
-        statusPending: '管理者承認待ち',
-        statusNone: '未認証',
-        removeOwnTickBtn: 'コレクションからチェックを外す',
-        sendPhotoBtn: '写真を送信',
-        chatTitle: 'グローバルコレクターチャット',
-        chatSubtitle: 'ユーザー名をクリックするとプロフィールと達成率を確認できます。',
-        chatInputPlaceholder: 'メッセージを入力...',
-        sendBtn: '送信',
-        noChatMsg: 'まだメッセージはありません。',
-        deleteBtn: '削除',
-        translateBtn: '翻訳',
-        translatingText: '翻訳中...',
-        translatedBadge: '翻訳',
-        photoChatTitle: 'グローバルフォトチャット',
-        photoChatSubtitle: 'フィギュアやカプセル、カードの写真を共有しよう。',
-        photoChatPlaceholder: '写真の説明...',
-        sharePhotoBtn: '写真を共有',
-        noPhotoMsg: 'まだ写真は共有されていません。',
-        leaderboardTitle: 'コレクターランキング',
-        leaderboardSubtitle: '完了したMonsuno数と達成率によるランキング。',
-        completedSuffix: '完了',
-        marketTitle: 'トレード＆販売マーケット',
-        marketSubtitle: '余剰品や探しているアイテムの写真とリンクを共有しましょう。',
-        marketAll: 'すべて',
-        marketWanted: '求む',
-        marketMine: '自分の出品',
-        marketCreateBtn: '+ 出品する',
-        noMarketMsg: 'このカテゴリに出品はありません。',
-        typeTrade: '交換',
-        typeSale: '販売',
-        typeWanted: '求む',
-        createListingTitle: '新規出品',
-        listingTitleLabel: 'タイトル',
-        listingTypeLabel: '種別',
-        listingCurrencyLabel: '通貨',
-        listingPriceLabel: '価格 / メモ',
-        listingLinkLabel: 'リンク（任意）',
-        listingPhotoLabel: '商品画像',
-        listingDescLabel: '説明',
-        cancelBtn: 'キャンセル',
-        publishBtn: '公開する',
-        ticketsTitle: 'アカウント＆サポートチケット',
-        ticketsSubtitle: 'ユーザー名やパスワードの変更リクエストを管理者に送信できます。',
-        ticketOptUsername: 'ユーザー名変更',
-        ticketOptPassword: 'パスワード変更',
-        ticketOptOther: 'その他の要望',
-        ticketDetailPlaceholder: '希望する新しい情報 / 詳細...',
-        sendTicketBtn: 'チケット送信',
-        noTicketMsg: '作成したチケットはありません。',
-        supportTitle: 'サポート＆お問い合わせ',
-        supportDesc: 'パスワード再設定や認証については公式Instagramまでお問い合わせください。',
-        officialIgLabel: '公式Instagramアカウント',
-        openIgBtn: 'Instagramで開く (@monsunoglobal)'
-      },
-      zh: {
-        langName: '中文',
-        loginUsernameLabel: '用户名',
-        loginUsernamePlaceholder: '用户名',
-        loginPasswordLabel: '密码',
-        forgotPasswordLink: '忘记密码',
-        loginButton: '登录',
-        registerTab: '注册',
-        regUsernameLabel: '用户名',
-        regUsernamePlaceholder: '用户名',
-        regDisplayNameLabel: '显示名称',
-        regDisplayNamePlaceholder: '显示名称',
-        regPasswordLabel: '密码',
-        registerNoteWarning: '请记下您的账号信息，之后无法修改。',
-        registerButton: '注册并开始',
-        languageLabel: '语言',
-        headerSub: '收藏 • 聊天 • 市场',
-        navCollection: '我的收藏',
-        navChat: '全球聊天',
-        navPhotoChat: '图片聊天',
-        navLeaderboard: '排行榜',
-        navMarket: '交易市场',
-        navTickets: '工单',
-        navSupport: '支持与联系',
-        navAdmin: '管理面板',
-        editProfileBtn: '编辑资料',
-        logoutBtn: '退出',
-        showcaseTitle: 'MONSUNO 展示柜与收藏',
-        showcaseSubtitle: '上传手办、胶囊和卡牌照片等待审核；每集齐一个角色记为 +1 Monsuno。',
-        completedMonsunoLabel: '已集齐 Monsuno：',
-        completionLabel: '完成度：',
-        addShowcaseBtn: '+ 添加展示',
-        editShowcaseBtn: '✏️ 编辑展示柜',
-        searchShowcasePlaceholder: '搜索展示柜（如 LOCK）...',
-        filterAll: '全部',
-        verifyOrEdit: '验证 / 编辑',
-        slotFigure: '手办',
-        slotCapsule: '胶囊',
-        slotCards: '卡牌',
-        slotNone: '无',
-        noCharFound: '未找到匹配的角色。',
-        statusApproved: '已验证 (✓)',
-        statusPending: '等待管理员审核',
-        statusNone: '尚未验证',
-        removeOwnTickBtn: '从我的收藏中取消勾选',
-        sendPhotoBtn: '发送照片',
-        chatTitle: '全球收藏家聊天室',
-        chatSubtitle: '点击任意用户名可查看其主页和收藏完成度。',
-        chatInputPlaceholder: '给收藏家们发消息...',
-        sendBtn: '发送',
-        noChatMsg: '暂无消息，快来发送第一条吧！',
-        deleteBtn: '删除',
-        translateBtn: '翻译',
-        translatingText: '翻译中...',
-        translatedBadge: '翻译',
-        photoChatTitle: '全球图片聊天',
-        photoChatSubtitle: '与社区分享你的手办、胶囊和卡牌照片。',
-        photoChatPlaceholder: '照片说明...',
-        sharePhotoBtn: '分享照片',
-        noPhotoMsg: '暂无分享照片。',
-        leaderboardTitle: '收藏家排行榜',
-        leaderboardSubtitle: '按已集齐 Monsuno 数量与收藏完成度排序。',
-        completedSuffix: '已完成',
-        marketTitle: '交换与出售市场',
-        marketSubtitle: '发布多余或求购物品的照片和外部链接。',
-        marketAll: '全部发布',
-        marketWanted: '求购中',
-        marketMine: '我的发布',
-        marketCreateBtn: '+ 发布信息',
-        noMarketMsg: '该分类下暂无发布。',
-        typeTrade: '交换',
-        typeSale: '出售',
-        typeWanted: '求购',
-        createListingTitle: '发布新信息',
-        listingTitleLabel: '标题',
-        listingTypeLabel: '类型',
-        listingCurrencyLabel: '货币',
-        listingPriceLabel: '价格 / 备注',
-        listingLinkLabel: '链接（选填）',
-        listingPhotoLabel: '物品照片',
-        listingDescLabel: '说明',
-        cancelBtn: '取消',
-        publishBtn: '发布',
-        ticketsTitle: '账号与支持工单',
-        ticketsSubtitle: '向网站管理员提交修改用户名或密码的请求。',
-        ticketOptUsername: '修改用户名',
-        ticketOptPassword: '修改密码',
-        ticketOptOther: '其他请求',
-        ticketDetailPlaceholder: '申请的新信息 / 说明...',
-        sendTicketBtn: '提交工单',
-        noTicketMsg: '您尚未创建任何工单。',
-        supportTitle: '支持与联系',
-        supportDesc: '如需重置密码或咨询收藏问题，请通过官方 Instagram 联系我们。',
-        officialIgLabel: '官方 Instagram 账号',
-        openIgBtn: '在 Instagram 中打开 (@monsunoglobal)'
       }
     };
 
@@ -1468,6 +918,7 @@
 
     const state = {
       lang: localStorage.getItem('mv3_lang') || 'tr',
+      liveDbUrl: localStorage.getItem('mv3_live_db_url') || DEFAULT_LIVE_DB_URL,
       user: loadJSON('mv3_current_user', null),
       users: storedUsers,
       characters: loadJSON('mv3_characters', INITIAL_CHARACTERS),
@@ -1488,6 +939,192 @@
     function t(key) {
       const lang = TRANSLATIONS[state.lang] ? state.lang : 'tr';
       return TRANSLATIONS[lang]?.[key] || TRANSLATIONS.tr[key] || key;
+    }
+
+    function getNormalizedDatabaseURL() {
+      const raw = (state.liveDbUrl || '').trim().replace(/\/+$/, '');
+      if (!raw) return '';
+      if (!/^https:\/\/[a-zA-Z0-9.-]+/.test(raw)) return '';
+      return raw;
+    }
+
+    function updateLiveSyncButton(connected = Boolean(getNormalizedDatabaseURL())) {
+      const btn = document.getElementById('live-sync-status-btn');
+      if (!btn) return;
+      if (connected) {
+        btn.textContent = '🟢 Çevrimiçi';
+        btn.className = 'px-2.5 py-2 rounded-xl text-xs font-bold bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/40 transition';
+      } else {
+        btn.textContent = '🌐 Çevrimdışı';
+        btn.className = 'px-2.5 py-2 rounded-xl text-xs font-bold bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700 transition';
+      }
+    }
+
+    function openLiveSyncModal() {
+      const input = document.getElementById('live-db-url-input');
+      if (input) input.value = state.liveDbUrl || '';
+      openModal('live-sync-modal');
+    }
+
+    function handleSaveLiveSync(event) {
+      event.preventDefault();
+      const url = (document.getElementById('live-db-url-input')?.value || '').trim().replace(/\/+$/, '');
+      if (url && !/^https:\/\/[a-zA-Z0-9.-]+/.test(url)) {
+        showToast('Geçerli bir https:// Firebase Realtime Database URL girin.');
+        return;
+      }
+      state.liveDbUrl = url;
+      try {
+        localStorage.setItem('mv3_live_db_url', url);
+      } catch (e) {}
+      closeModal('live-sync-modal');
+      updateLiveSyncButton(Boolean(url));
+      if (url) {
+        pullRemoteSharedState(true);
+        showToast('Canlı senkronizasyon aktif edildi.');
+      } else {
+        showToast('Canlı bağlantı kapatıldı.');
+      }
+    }
+
+    function clearLiveSync() {
+      state.liveDbUrl = '';
+      try {
+        localStorage.removeItem('mv3_live_db_url');
+      } catch (e) {}
+      const input = document.getElementById('live-db-url-input');
+      if (input) input.value = '';
+      updateLiveSyncButton(false);
+      closeModal('live-sync-modal');
+      showToast('Canlı bağlantı kaldırıldı.');
+    }
+
+    function buildSharedPayload() {
+      return {
+        updatedAt: Date.now(),
+        users: state.users,
+        characters: state.characters,
+        userCollections: state.userCollections,
+        queue: state.queue,
+        chat: state.chat,
+        photoChat: state.photoChat,
+        market: state.market,
+        tickets: state.tickets,
+        reports: state.reports
+      };
+    }
+
+    let pushDebounceTimer = null;
+    function scheduleRemotePush() {
+      const dbUrl = getNormalizedDatabaseURL();
+      if (!dbUrl) return;
+      clearTimeout(pushDebounceTimer);
+      pushDebounceTimer = setTimeout(async () => {
+        try {
+          const res = await fetch(`${dbUrl}/monsunoVaultShared.json`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(buildSharedPayload())
+          });
+          updateLiveSyncButton(res.ok);
+        } catch (e) {
+          updateLiveSyncButton(false);
+        }
+      }, 250);
+    }
+
+    let isPullingRemote = false;
+    async function pullRemoteSharedState(showAlertOnFirst = false) {
+      const dbUrl = getNormalizedDatabaseURL();
+      if (!dbUrl || isPullingRemote) return;
+      isPullingRemote = true;
+      try {
+        const res = await fetch(`${dbUrl}/monsunoVaultShared.json`, { cache: 'no-store' });
+        if (!res.ok) {
+          updateLiveSyncButton(false);
+          return;
+        }
+        updateLiveSyncButton(true);
+        const remote = await res.json();
+        if (!remote) {
+          scheduleRemotePush();
+          return;
+        }
+
+        let changed = false;
+        if (Array.isArray(remote.users) && remote.users.length) {
+          let mergedUsers = remote.users.slice();
+          if (!mergedUsers.some(u => (u.username || '').toLowerCase() === OWNER_USERNAME)) {
+            mergedUsers.unshift({ ...DEFAULT_OWNER_USER });
+          }
+          if (JSON.stringify(mergedUsers) !== JSON.stringify(state.users)) {
+            state.users = mergedUsers;
+            changed = true;
+          }
+        }
+        if (Array.isArray(remote.characters) && remote.characters.length && JSON.stringify(remote.characters) !== JSON.stringify(state.characters)) {
+          state.characters = remote.characters;
+          changed = true;
+        }
+        if (remote.userCollections && typeof remote.userCollections === 'object' && JSON.stringify(remote.userCollections) !== JSON.stringify(state.userCollections)) {
+          state.userCollections = remote.userCollections;
+          changed = true;
+        }
+        if (Array.isArray(remote.queue) && JSON.stringify(remote.queue) !== JSON.stringify(state.queue)) {
+          state.queue = remote.queue;
+          changed = true;
+        }
+        if (Array.isArray(remote.chat) && JSON.stringify(remote.chat) !== JSON.stringify(state.chat)) {
+          state.chat = remote.chat;
+          changed = true;
+        }
+        if (Array.isArray(remote.photoChat) && JSON.stringify(remote.photoChat) !== JSON.stringify(state.photoChat)) {
+          state.photoChat = remote.photoChat;
+          changed = true;
+        }
+        if (Array.isArray(remote.market) && JSON.stringify(remote.market) !== JSON.stringify(state.market)) {
+          state.market = remote.market;
+          changed = true;
+        }
+        if (Array.isArray(remote.tickets) && JSON.stringify(remote.tickets) !== JSON.stringify(state.tickets)) {
+          state.tickets = remote.tickets;
+          changed = true;
+        }
+        if (Array.isArray(remote.reports) && JSON.stringify(remote.reports) !== JSON.stringify(state.reports)) {
+          state.reports = remote.reports;
+          changed = true;
+        }
+
+        if (changed) {
+          saveState(false);
+          if (state.user) {
+            const latestMe = state.users.find(u => u.username.toLowerCase() === state.user.username.toLowerCase());
+            if (latestMe?.banned) {
+              handleLogout();
+              return;
+            }
+            if (latestMe) {
+              state.user = { ...latestMe };
+              document.getElementById('header-user-avatar').src = state.user.avatar || 'https://placehold.co/64x64/1e293b/f8fafc?text=U';
+              document.getElementById('header-user-label').innerHTML = `${escapeHTML(state.user.displayName)} ${verifiedBadgeHTML(state.user.username)}`;
+            }
+            updateStats();
+            if (state.activeSection === 'collection') renderCollection();
+            if (state.activeSection === 'chat') renderChat();
+            if (state.activeSection === 'photo-chat') renderPhotoChat();
+            if (state.activeSection === 'leaderboard') renderLeaderboard();
+            if (state.activeSection === 'market') renderMarket();
+            if (state.activeSection === 'tickets') renderTickets();
+            if (state.activeSection === 'admin' && isOwner(state.user.username)) renderAdmin();
+          }
+        } else if (showAlertOnFirst) {
+          showToast('Canlı veritabanı ile eşleşti.');
+        }
+      } catch (e) {
+        updateLiveSyncButton(false);
+      } finally {
+        isPullingRemote = false;
+      }
     }
 
     async function translateDynamicText(cacheKey, text) {
@@ -1540,7 +1177,7 @@
       if (state.activeSection === 'market') renderMarket();
     }
 
-    function saveState() {
+    function saveState(syncRemote = true) {
       try {
         localStorage.setItem('mv3_lang', state.lang);
         localStorage.setItem('mv3_current_user', JSON.stringify(state.user));
@@ -1554,6 +1191,9 @@
         localStorage.setItem('mv3_tickets', JSON.stringify(state.tickets));
         localStorage.setItem('mv3_reports', JSON.stringify(state.reports));
       } catch (e) {}
+      if (syncRemote) {
+        scheduleRemotePush();
+      }
     }
 
     function switchAuthTab(tab) {
@@ -1626,7 +1266,7 @@
     function setLanguage(lang) {
       if (!TRANSLATIONS[lang]) return;
       state.lang = lang;
-      saveState();
+      saveState(false);
       applyLanguage();
       if (state.user) {
         renderCollection();
@@ -1663,7 +1303,7 @@
 
       errEl.classList.add('hidden');
       state.user = { ...found };
-      saveState();
+      saveState(true);
       bootAuthenticatedApp();
     }
 
@@ -1690,13 +1330,13 @@
 
       state.users.push(newUser);
       state.user = { ...newUser };
-      saveState();
+      saveState(true);
       bootAuthenticatedApp();
     }
 
     function handleLogout() {
       state.user = null;
-      saveState();
+      saveState(false);
       document.getElementById('app-shell').classList.add('hidden');
       document.getElementById('auth-screen').classList.remove('hidden');
     }
@@ -1733,6 +1373,7 @@
     function bootAuthenticatedApp() {
       if (!state.user) return;
       applyLanguage();
+      updateLiveSyncButton();
       const latestUser = state.users.find(u => u.username.toLowerCase() === state.user.username.toLowerCase());
       if (!latestUser || latestUser.banned) {
         handleLogout();
@@ -1776,15 +1417,15 @@
         const btn = document.getElementById(`nav-${s}`);
         if (!btn) return;
         if (s === 'admin') {
-          btn.className = `${isOwner(state.user?.username) ? '' : 'hidden '}nav-btn px-3 sm:px-3.5 py-2 rounded-xl text-xs font-extrabold ${
+          btn.className = `${isOwner(state.user?.username) ? '' : 'hidden '}nav-btn shrink-0 px-3 sm:px-3.5 py-2 rounded-xl text-xs font-extrabold ${
             sec === 'admin'
               ? 'bg-amber-500 text-slate-950'
               : 'bg-amber-500/15 text-amber-300 hover:bg-amber-500/25 border border-amber-500/40'
           } transition`;
         } else {
           btn.className = sec === s
-            ? 'nav-btn px-3 sm:px-3.5 py-2 rounded-xl text-xs font-extrabold bg-core-600 text-white transition'
-            : 'nav-btn px-3 sm:px-3.5 py-2 rounded-xl text-xs font-semibold bg-slate-900 text-slate-300 hover:text-white border border-slate-800 transition';
+            ? 'nav-btn shrink-0 px-3 sm:px-3.5 py-2 rounded-xl text-xs font-extrabold bg-core-600 text-white transition'
+            : 'nav-btn shrink-0 px-3 sm:px-3.5 py-2 rounded-xl text-xs font-semibold bg-slate-900 text-slate-300 hover:text-white border border-slate-800 transition';
         }
       });
 
@@ -1973,7 +1614,7 @@
           showToast('Fotoğraf site yöneticisine onaya gönderildi.');
         }
 
-        saveState();
+        saveState(true);
         updateStats();
         renderCollection();
         openVerifyModal(charId);
@@ -1987,7 +1628,7 @@
       if (state.userCollections[userKey]?.[charId]) {
         delete state.userCollections[userKey][charId][slotKey];
       }
-      saveState();
+      saveState(true);
       updateStats();
       renderCollection();
       openVerifyModal(charId);
@@ -2010,7 +1651,7 @@
           noCapsule,
           image: imgData || `https://placehold.co/320x320/0f172a/38bdf8?text=${encodeURIComponent(name)}`
         });
-        saveState();
+        saveState(true);
         updateStats();
         renderCollection();
         closeModal('add-char-modal');
@@ -2073,7 +1714,7 @@
       const fileInput = document.getElementById(`edit-file-${charId}`);
 
       const apply = () => {
-        saveState();
+        saveState(true);
         updateStats();
         renderCollection();
         showToast(`${char.name} güncellendi.`);
@@ -2093,7 +1734,7 @@
 
     function deleteCharacter(charId) {
       state.characters = state.characters.filter(c => c.id !== charId);
-      saveState();
+      saveState(true);
       updateStats();
       renderCollection();
       openEditShowcaseModal();
@@ -2131,7 +1772,7 @@
         }
         state.user = { ...target };
       }
-      saveState();
+      saveState(true);
       bootAuthenticatedApp();
       closeModal('profile-modal');
       showToast('Profil bilgilerin güncellendi.');
@@ -2209,14 +1850,14 @@
         time: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
       });
       input.value = '';
-      saveState();
+      saveState(true);
       renderChat();
     }
 
     function deleteChatMessage(id) {
       if (!isOwner(state.user?.username)) return;
       state.chat = state.chat.filter(m => m.id !== id);
-      saveState();
+      saveState(true);
       renderChat();
     }
 
@@ -2288,7 +1929,7 @@
           caption
         });
         event.target.reset();
-        saveState();
+        saveState(true);
         renderPhotoChat();
         showToast('Fotoğraf paylaşıldı!');
       };
@@ -2298,7 +1939,7 @@
     function deletePhotoChatItem(id) {
       if (!isOwner(state.user?.username)) return;
       state.photoChat = state.photoChat.filter(p => p.id !== id);
-      saveState();
+      saveState(true);
       renderPhotoChat();
     }
 
@@ -2458,7 +2099,7 @@
           desc,
           photo: photoData || `https://placehold.co/480x320/0f172a/38bdf8?text=${encodeURIComponent(title)}`
         });
-        saveState();
+        saveState(true);
         updateStats();
         renderMarket();
         closeModal('create-listing-modal');
@@ -2480,7 +2121,7 @@
       if (!item || !state.user) return;
       if (!isOwner(state.user.username) && item.ownerUsername.toLowerCase() !== state.user.username.toLowerCase()) return;
       state.market = state.market.filter(l => l.id !== id);
-      saveState();
+      saveState(true);
       updateStats();
       renderMarket();
       showToast('İlan silindi.');
@@ -2501,7 +2142,7 @@
         status: 'Açık'
       });
       event.target.reset();
-      saveState();
+      saveState(true);
       updateStats();
       renderTickets();
       showToast('Ticket talebin yöneticiye iletildi.');
@@ -2644,7 +2285,7 @@
         status: 'Açık',
         time: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
       });
-      saveState();
+      saveState(true);
       showToast(t('reportSentToast'));
     }
 
@@ -2653,7 +2294,7 @@
       const rep = state.reports.find(r => r.id === repId);
       if (!rep) return;
       rep.status = 'Kapatıldı';
-      saveState();
+      saveState(true);
       renderAdmin();
     }
 
@@ -2671,7 +2312,7 @@
       }
 
       rep.status = 'Silindi';
-      saveState();
+      saveState(true);
       updateStats();
       renderAdmin();
       showToast('Raporlanan içerik silindi.');
@@ -2688,7 +2329,7 @@
         photo: req.photo
       };
       state.queue = state.queue.filter(r => r.id !== reqId);
-      saveState();
+      saveState(true);
       updateStats();
       renderAdmin();
       showToast('Onay verildi ve kullanıcının tik kutusu güncellendi.');
@@ -2702,7 +2343,7 @@
         delete state.userCollections[userKey][req.charId][req.slotKey];
       }
       state.queue = state.queue.filter(r => r.id !== reqId);
-      saveState();
+      saveState(true);
       updateStats();
       renderAdmin();
       showToast('Talep reddedildi.');
@@ -2713,7 +2354,7 @@
       const target = state.users.find(u => u.username.toLowerCase() === username.toLowerCase());
       if (!target || isOwner(target.username)) return;
       target.banned = !target.banned;
-      saveState();
+      saveState(true);
       renderAdmin();
       showToast(target.banned ? `${target.displayName} banlandı.` : `${target.displayName} banı kaldırıldı.`);
     }
@@ -2722,7 +2363,7 @@
       const t = state.tickets.find(item => item.id === id);
       if (!t) return;
       t.status = 'Çözüldü';
-      saveState();
+      saveState(true);
       updateStats();
       renderAdmin();
     }
@@ -2803,7 +2444,7 @@
       if (state.userCollections[userKey]?.[charId]) {
         delete state.userCollections[userKey][charId][slotKey];
       }
-      saveState();
+      saveState(true);
       updateStats();
       renderCollection();
       renderAdmin();
@@ -2836,16 +2477,25 @@
       if (state.user.username.toLowerCase() === oldUsername.toLowerCase()) {
         state.user = { ...target };
       }
-      saveState();
+      saveState(true);
       renderAdmin();
       openUserInspectModal(newUsername);
       showToast('Kullanıcı adı ve şifre güncellendi.');
     }
 
-    applyLanguage();
-    if (state.user) {
-      bootAuthenticatedApp();
+    function initApp() {
+      applyLanguage();
+      updateLiveSyncButton(Boolean(getNormalizedDatabaseURL()));
+      if (getNormalizedDatabaseURL()) {
+        pullRemoteSharedState(false);
+        setInterval(() => pullRemoteSharedState(false), 4000);
+      }
+      if (state.user) {
+        bootAuthenticatedApp();
+      }
     }
+
+    initApp();
   </script>
 </body>
 </html>
