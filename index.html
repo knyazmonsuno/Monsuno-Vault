@@ -289,6 +289,8 @@
                 class="faction-filter-btn px-3 py-1.5 rounded-xl text-xs font-semibold bg-orange-500/15 text-orange-300 border border-orange-500/30 transition">Forge Resistance</button>
               <button type="button" onclick="setFactionFilter('Shape Shifter')" data-faction="Shape Shifter"
                 class="faction-filter-btn px-3 py-1.5 rounded-xl text-xs font-semibold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 transition">Shape Shifter</button>
+              <button type="button" onclick="setFactionFilter('Gri')" data-faction="Gri"
+                class="faction-filter-btn px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-500/20 text-slate-200 border border-slate-500/40 transition">Gri</button>
             </div>
           </div>
         </div>
@@ -486,6 +488,7 @@
             <option value="S.T.O.R.M.">S.T.O.R.M. (Sarı)</option>
             <option value="Forge Resistance">Forge Resistance (Turuncu)</option>
             <option value="Shape Shifter">Shape Shifter (Yeşil)</option>
+            <option value="Gri">Gri (Gri)</option>
           </select>
         </div>
         <div>
@@ -655,6 +658,11 @@
         cardBg: 'bg-gradient-to-b from-emerald-950/85 to-slate-950 border-emerald-500/45',
         plateBg: 'bg-emerald-500 text-slate-950',
         badgeText: 'text-emerald-300'
+      },
+      'Gri': {
+        cardBg: 'bg-gradient-to-b from-slate-700/90 via-zinc-800/85 to-slate-950 border-slate-400/50',
+        plateBg: 'bg-slate-400 text-slate-950',
+        badgeText: 'text-slate-200'
       }
     };
 
@@ -1641,6 +1649,18 @@
       }
     }
 
+    async function translateViaMyMemory(text, targetLang) {
+      const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=autodetect|${encodeURIComponent(targetLang)}`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error('MyMemory HTTP ' + res.status);
+      const data = await res.json();
+      const translated = data?.responseData?.translatedText;
+      if (!translated || /INVALID LANGUAGE PAIR|MYMEMORY WARNING/i.test(translated)) {
+        throw new Error('MyMemory invalid translation');
+      }
+      return translated.trim();
+    }
+
     async function translateDynamicText(cacheKey, text) {
       if (!text) return;
       const lang = TRANSLATIONS[state.lang] ? state.lang : 'tr';
@@ -1679,6 +1699,13 @@
           }
         }
       }
+
+      try {
+        const fallbackTranslated = await translateViaMyMemory(text, lang);
+        state.translationsCache[fullKey] = { loading: false, text: fallbackTranslated };
+        rerenderActiveDynamicViews();
+        return;
+      } catch (e) {}
 
       delete state.translationsCache[fullKey];
       rerenderActiveDynamicViews();
@@ -2198,7 +2225,7 @@
             <input id="edit-name-${char.id}" type="text" value="${escapeHTML(char.name)}"
               class="px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs text-white" />
             <select id="edit-faction-${char.id}" class="px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs text-white">
-              ${['Core-Tech', 'Eklipse', 'S.T.O.R.M.', 'Forge Resistance', 'Shape Shifter'].map(f =>
+              ${['Core-Tech', 'Eklipse', 'S.T.O.R.M.', 'Forge Resistance', 'Shape Shifter', 'Gri'].map(f =>
                 `<option value="${f}" ${char.faction === f ? 'selected' : ''}>${f}</option>`
               ).join('')}
             </select>
