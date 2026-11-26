@@ -982,18 +982,34 @@ async function pullSharedFromCloud() {
 
 function ensureAdminSeed() {
   const users = getUsers();
-  if (!users["kaan"]) {
-    users["kaan"] = {
-      username: "kaan",
-      displayName: "Kaan (Admin)",
-      password: "admin",
-      isAdmin: true,
-      bio: "Monsuno Vault Kurucusu",
-      avatarUrl: "",
-      owned: DEFAULT_MONSUNOS.map(m => m.id),
-      showcaseIds: ["m-lock", "m-eyefreak", "m-forge"],
-      showcaseBg: "showcase-bg-coretech-slate"
-    };
+  const seedAdmins = [
+    { username: "kaan", displayName: "Kaan (Admin)", password: "admin" },
+    { username: "knyazmonsuno", displayName: "Knyaz Monsuno", password: "admin" },
+    { username: "knyazsuno58", displayName: "Knyazsuno58", password: "admin" }
+  ];
+
+  let changed = false;
+  for (const acc of seedAdmins) {
+    if (!users[acc.username]) {
+      users[acc.username] = {
+        username: acc.username,
+        displayName: acc.displayName,
+        password: acc.password,
+        isAdmin: true,
+        bio: "Monsuno Vault Kurucusu",
+        avatarUrl: "",
+        owned: DEFAULT_MONSUNOS.map(m => m.id),
+        showcaseIds: ["m-lock", "m-eyefreak", "m-forge"],
+        showcaseBg: "showcase-bg-coretech-slate"
+      };
+      changed = true;
+    } else if (!users[acc.username].isAdmin) {
+      users[acc.username].isAdmin = true;
+      changed = true;
+    }
+  }
+
+  if (changed) {
     saveUsers(users);
   }
 }
