@@ -435,9 +435,13 @@
         </div>
 
         <div class="glass-panel rounded-3xl p-4 sm:p-6 border border-slate-800 space-y-4">
-          <div>
-            <h2 class="font-display font-extrabold text-lg text-white">KAYITLI KOLEKSİYONERLER &amp; BAN YÖNETİMİ</h2>
-            <p class="text-xs text-slate-400">Oyuncunun üzerine tıklayarak koleksiyonundaki tikleri inceleyip kaldırabilir, kullanıcı adı/şifre güncelleyebilir veya banlayabilirsin.</p>
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h2 class="font-display font-extrabold text-lg text-white">KAYITLI KOLEKSİYONERLER &amp; BAN YÖNETİMİ</h2>
+              <p class="text-xs text-slate-400">Oyuncunun üzerine tıklayarak koleksiyonundaki tikleri inceleyip kaldırabilir, kullanıcı adı/şifre güncelleyebilir veya banlayabilirsin.</p>
+            </div>
+            <input id="admin-user-search" type="text" oninput="renderAdminUsersList()" placeholder="Kullanıcı adı veya ad ara..."
+              class="w-full sm:w-64 px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-400" />
           </div>
           <div id="admin-users-list" class="grid grid-cols-1 md:grid-cols-2 gap-3"></div>
         </div>
@@ -2651,11 +2655,52 @@
         detail,
         status: 'Açık'
       });
-      event.target.reset();
+      document.getElementById('ticket-detail').value = '';
       saveState(true);
       updateStats();
       renderTickets();
-      showToast('Ticket talebin yöneticiye iletildi.');
+      showToast('Ticket talebiniz iletildi.');
+    }
+
+    function renderAdminUsersList() {
+      const usersList = document.getElementById('admin-users-list');
+      if (!usersList) return;
+      const query = (document.getElementById('admin-user-search')?.value || '').trim().toLowerCase();
+      const filteredUsers = state.users.filter(u =>
+        !query ||
+        (u.username || '').toLowerCase().includes(query) ||
+        (u.displayName || '').toLowerCase().includes(query)
+      );
+
+      if (!filteredUsers.length) {
+        usersList.innerHTML = `<div class="col-span-full text-xs text-slate-500 py-3">Aramanıza uygun kullanıcı bulunamadı.</div>`;
+        return;
+      }
+
+      usersList.innerHTML = filteredUsers.map(u => {
+        const prog = getUserProgress(u.username);
+        const ownerAcc = isOwner(u.username);
+        return `
+          <div class="p-3.5 rounded-2xl bg-slate-950 border ${u.banned ? 'border-rose-500/40' : 'border-slate-800'} flex items-center justify-between gap-3">
+            <div onclick="openUserInspectModal('${escapeHTML(u.username)}')" class="flex items-center gap-3 cursor-pointer flex-1 min-w-0">
+              <img src="${escapeHTML(u.avatar)}" alt="PP" class="w-9 h-9 rounded-full object-cover border border-slate-700 shrink-0" />
+              <div class="min-w-0">
+                <div class="text-xs font-extrabold text-white flex items-center gap-1 truncate">
+                  ${escapeHTML(u.displayName)} ${verifiedBadgeHTML(u.username)}
+                  ${u.banned ? '<span class="px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-300 text-[10px]">BANLI</span>' : ''}
+                </div>
+                <div class="text-[11px] text-slate-400 truncate">@${escapeHTML(u.username)} • ${prog.completedMonsunos} Monsuno (%${prog.percentage})</div>
+              </div>
+            </div>
+            ${!ownerAcc ? `
+              <button type="button" onclick="toggleUserBan('${escapeHTML(u.username)}')"
+                class="px-3 py-1.5 rounded-xl text-xs font-bold ${u.banned ? 'bg-emerald-500/20 text-emerald-300' : 'bg-rose-500/20 text-rose-300'}">
+                ${u.banned ? 'Ban Kaldır' : 'Banla'}
+              </button>
+            ` : ''}
+          </div>
+        `;
+      }).join('');
     }
 
     function renderAdmin() {
@@ -2688,33 +2733,7 @@
         }
       }
 
-      const usersList = document.getElementById('admin-users-list');
-      if (usersList) {
-        usersList.innerHTML = state.users.map(u => {
-          const prog = getUserProgress(u.username);
-          const ownerAcc = isOwner(u.username);
-          return `
-            <div class="p-3.5 rounded-2xl bg-slate-950 border ${u.banned ? 'border-rose-500/40' : 'border-slate-800'} flex items-center justify-between gap-3">
-              <div onclick="openUserInspectModal('${escapeHTML(u.username)}')" class="flex items-center gap-3 cursor-pointer flex-1 min-w-0">
-                <img src="${escapeHTML(u.avatar)}" alt="PP" class="w-9 h-9 rounded-full object-cover border border-slate-700 shrink-0" />
-                <div class="min-w-0">
-                  <div class="text-xs font-extrabold text-white flex items-center gap-1 truncate">
-                    ${escapeHTML(u.displayName)} ${verifiedBadgeHTML(u.username)}
-                    ${u.banned ? '<span class="px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-300 text-[10px]">BANLI</span>' : ''}
-                  </div>
-                  <div class="text-[11px] text-slate-400 truncate">@${escapeHTML(u.username)} • ${prog.completedMonsunos} Monsuno (%${prog.percentage})</div>
-                </div>
-              </div>
-              ${!ownerAcc ? `
-                <button type="button" onclick="toggleUserBan('${escapeHTML(u.username)}')"
-                  class="px-3 py-1.5 rounded-xl text-xs font-bold ${u.banned ? 'bg-emerald-500/20 text-emerald-300' : 'bg-rose-500/20 text-rose-300'}">
-                  ${u.banned ? 'Ban Kaldır' : 'Banla'}
-                </button>
-              ` : ''}
-            </div>
-          `;
-        }).join('');
-      }
+      renderAdminUsersList();
 
       const adminTickets = document.getElementById('admin-tickets-list');
       if (adminTickets) {
