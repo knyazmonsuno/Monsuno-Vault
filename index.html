@@ -1,0 +1,2851 @@
+<!DOCTYPE html>
+<html lang="tr" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Monsuno Vault — Koleksiyon, Chat &amp; Pazar</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Orbitron:wght@700;800;900&display=swap" rel="stylesheet" />
+  <script>
+    if (window.tailwind) {
+      tailwind.config = {
+        darkMode: 'class',
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['Inter', 'sans-serif'],
+              display: ['Orbitron', 'sans-serif']
+            },
+            colors: {
+              core: {
+                400: '#38bdf8',
+                500: '#0ea5e9',
+                600: '#0284c7'
+              }
+            }
+          }
+        }
+      };
+    }
+  </script>
+  <style>
+    html, body {
+      max-width: 100%;
+      overflow-x: hidden;
+      touch-action: manipulation;
+    }
+    body {
+      background: radial-gradient(circle at top, #0f172a 0%, #020617 65%);
+      color: #f8fafc;
+      min-height: 100vh;
+    }
+    .glass-panel {
+      background: rgba(15, 23, 42, 0.86);
+      backdrop-filter: blur(14px);
+    }
+    .hex-main {
+      clip-path: polygon(25% 4%, 75% 4%, 98% 50%, 75% 96%, 25% 96%, 2% 50%);
+    }
+    .hex-badge {
+      clip-path: polygon(25% 5%, 75% 5%, 97% 50%, 75% 95%, 25% 95%, 3% 50%);
+    }
+    button, a, select, input {
+      touch-action: manipulation;
+    }
+  </style>
+</head>
+<body class="antialiased selection:bg-core-500 selection:text-white">
+  <!-- Giriş / Kayıt Ekranı -->
+  <div id="auth-screen" class="min-h-screen flex items-center justify-center p-4">
+    <div class="glass-panel w-full max-w-md rounded-3xl p-6 sm:p-8 border border-slate-800 shadow-2xl">
+      <div class="flex items-center gap-3 mb-6">
+        <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-core-400 to-indigo-600 flex items-center justify-center font-display font-black text-xl text-slate-950 shadow-lg">
+          M
+        </div>
+        <div>
+          <h1 class="font-display font-black text-lg tracking-wider text-white">MONSUNO VAULT</h1>
+          <p class="text-xs text-slate-400">Global Koleksiyoner Topluluğu</p>
+        </div>
+      </div>
+      <!-- Giriş / Kayıt Sekmeleri -->
+      <div class="grid grid-cols-2 gap-2 p-1 rounded-2xl bg-slate-950 border border-slate-800 mb-6">
+        <button id="auth-tab-login" type="button" onclick="switchAuthTab('login')" data-i18n="loginButton"
+          class="py-2 rounded-xl text-xs font-extrabold bg-core-600 text-white transition">
+          Giriş Yap
+        </button>
+        <button id="auth-tab-register" type="button" onclick="switchAuthTab('register')" data-i18n="registerTab"
+          class="py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white transition">
+          Kayıt Ol
+        </button>
+      </div>
+
+      <!-- Giriş Formu -->
+      <form id="login-form" onsubmit="handleLogin(event)" class="space-y-4">
+        <div>
+          <label for="login-username" data-i18n="loginUsernameLabel" class="block text-xs font-semibold text-slate-300 mb-1.5">Kullanıcı Adı</label>
+          <input id="login-username" type="text" required autocomplete="username" data-i18n-placeholder="loginUsernamePlaceholder" placeholder="Kullanıcı adı"
+            class="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-core-400" />
+        </div>
+        <div>
+          <div class="flex items-center justify-between mb-1.5">
+            <label for="login-password" data-i18n="loginPasswordLabel" class="block text-xs font-semibold text-slate-300">Şifre</label>
+            <a href="https://www.instagram.com/monsunoglobal?gwpx=ZnY0bzJ2M2ppbm5h" target="_blank" rel="noopener noreferrer"
+              data-i18n="forgotPasswordLink" class="text-[11px] font-bold text-amber-400 hover:text-amber-300 transition">
+              Şifremi unuttum
+            </a>
+          </div>
+          <input id="login-password" type="password" required autocomplete="current-password" placeholder="••••••••"
+            class="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-core-400" />
+        </div>
+        <p id="auth-error-msg" class="hidden text-xs font-semibold text-rose-400 bg-rose-500/10 border border-rose-500/30 rounded-xl px-3 py-2"></p>
+        <button type="submit" data-i18n="loginButton"
+          class="w-full py-3 rounded-xl bg-gradient-to-r from-core-500 to-indigo-600 hover:from-core-400 hover:to-indigo-500 text-sm font-extrabold text-white shadow-lg transition">
+          Giriş Yap
+        </button>
+      </form>
+
+      <!-- Kayıt Formu -->
+      <form id="register-form" onsubmit="handleRegister(event)" class="hidden space-y-4">
+        <div>
+          <label for="reg-username" data-i18n="regUsernameLabel" class="block text-xs font-semibold text-slate-300 mb-1.5">Kullanıcı Adı</label>
+          <input id="reg-username" type="text" required data-i18n-placeholder="regUsernamePlaceholder" placeholder="Kullanıcı adı"
+            class="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-core-400" />
+        </div>
+        <div>
+          <label for="reg-displayname" data-i18n="regDisplayNameLabel" class="block text-xs font-semibold text-slate-300 mb-1.5">Görünen Ad</label>
+          <input id="reg-displayname" type="text" required data-i18n-placeholder="regDisplayNamePlaceholder" placeholder="Görünen ad"
+            class="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-core-400" />
+        </div>
+        <div>
+          <label for="reg-password" data-i18n="regPasswordLabel" class="block text-xs font-semibold text-slate-300 mb-1.5">Şifre</label>
+          <input id="reg-password" type="password" required minlength="4" placeholder="••••••••"
+            class="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-core-400" />
+        </div>
+        <div data-i18n="registerNoteWarning" class="text-[11px] font-semibold text-amber-300 bg-amber-500/10 border border-amber-500/30 rounded-xl px-3 py-2.5">
+          Bilgilerinizi lütfen not alınız, daha sonra değiştiremezsiniz.
+        </div>
+        <p id="reg-error-msg" class="hidden text-xs font-semibold text-rose-400 bg-rose-500/10 border border-rose-500/30 rounded-xl px-3 py-2"></p>
+        <button type="submit" data-i18n="registerButton"
+          class="w-full py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-sm font-extrabold text-slate-950 shadow-lg transition">
+          Kayıt Ol ve Başla
+        </button>
+      </form>
+
+      <!-- Dil Seçici -->
+      <div class="mt-5 pt-4 border-t border-slate-800/80 flex items-center justify-between gap-2">
+        <label for="lang-select-auth" data-i18n="languageLabel" class="text-xs font-semibold text-slate-400">Dil / Language</label>
+        <select id="lang-select-auth" onchange="setLanguage(this.value)"
+          class="px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-700 text-xs font-bold text-white focus:outline-none focus:border-core-400">
+          <option value="tr">Türkçe</option>
+          <option value="en">English</option>
+          <option value="de">Deutsch</option>
+          <option value="ru">Русский</option>
+          <option value="ar">العربية</option>
+          <option value="fr">Français</option>
+          <option value="ja">日本語</option>
+          <option value="zh">中文</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <!-- Ana Uygulama -->
+  <div id="app-shell" class="hidden min-h-screen flex flex-col">
+    <!-- Üst Gezinme Çubuğu -->
+    <header class="sticky top-0 z-30 glass-panel border-b border-slate-800/90">
+      <div class="max-w-7xl mx-auto px-3 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-3">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-core-400 to-indigo-600 flex items-center justify-center font-display font-black text-base text-slate-950 shadow">
+            M
+          </div>
+          <div>
+            <div class="font-display font-black text-sm sm:text-base tracking-wide text-white">MONSUNO VAULT</div>
+            <div data-i18n="headerSub" class="text-[11px] text-slate-400">Koleksiyon • Chat • Pazar</div>
+          </div>
+        </div>
+
+        <!-- Ana Sekmeler -->
+        <nav class="w-full lg:w-auto flex items-center lg:flex-wrap gap-1.5 sm:gap-2 overflow-x-auto pb-1 lg:pb-0">
+          <button id="nav-collection" type="button" onclick="switchSection('collection')" data-i18n="navCollection"
+            class="nav-btn shrink-0 px-3 sm:px-3.5 py-2.5 sm:py-2 rounded-xl text-xs font-extrabold bg-core-600 text-white transition">
+            Koleksiyonum
+          </button>
+          <button id="nav-chat" type="button" onclick="switchSection('chat')" data-i18n="navChat"
+            class="nav-btn shrink-0 px-3 sm:px-3.5 py-2.5 sm:py-2 rounded-xl text-xs font-semibold bg-slate-900 text-slate-300 hover:text-white border border-slate-800 transition">
+            Global Chat
+          </button>
+          <button id="nav-photo-chat" type="button" onclick="switchSection('photo-chat')" data-i18n="navPhotoChat"
+            class="nav-btn shrink-0 px-3 sm:px-3.5 py-2.5 sm:py-2 rounded-xl text-xs font-semibold bg-slate-900 text-slate-300 hover:text-white border border-slate-800 transition">
+            Foto Chat
+          </button>
+          <button id="nav-leaderboard" type="button" onclick="switchSection('leaderboard')" data-i18n="navLeaderboard"
+            class="nav-btn shrink-0 px-3 sm:px-3.5 py-2.5 sm:py-2 rounded-xl text-xs font-semibold bg-slate-900 text-slate-300 hover:text-white border border-slate-800 transition">
+            Liderlik
+          </button>
+          <button id="nav-market" type="button" onclick="switchSection('market')"
+            class="nav-btn shrink-0 px-3 sm:px-3.5 py-2.5 sm:py-2 rounded-xl text-xs font-semibold bg-slate-900 text-slate-300 hover:text-white border border-slate-800 transition">
+            <span data-i18n="navMarket">Pazar</span> (<span id="header-market-count">0</span>)
+          </button>
+          <button id="nav-tickets" type="button" onclick="switchSection('tickets')"
+            class="nav-btn shrink-0 px-3 sm:px-3.5 py-2.5 sm:py-2 rounded-xl text-xs font-semibold bg-slate-900 text-slate-300 hover:text-white border border-slate-800 transition">
+            <span data-i18n="navTickets">Ticket</span> (<span id="header-ticket-count">0</span>)
+          </button>
+          <button id="nav-support" type="button" onclick="switchSection('support')" data-i18n="navSupport"
+            class="nav-btn shrink-0 px-3 sm:px-3.5 py-2.5 sm:py-2 rounded-xl text-xs font-semibold bg-slate-900 text-slate-300 hover:text-white border border-slate-800 transition">
+            Destek &amp; İletişim
+          </button>
+          <button id="nav-admin" type="button" onclick="switchSection('admin')"
+            class="hidden nav-btn shrink-0 px-3 sm:px-3.5 py-2.5 sm:py-2 rounded-xl text-xs font-extrabold bg-amber-500/15 text-amber-300 hover:bg-amber-500/25 border border-amber-500/40 transition">
+            <span data-i18n="navAdmin">Admin Paneli</span> (<span id="header-pending-count">0</span>)
+          </button>
+        </nav>
+
+        <!-- Kullanıcı Bilgisi ve Aksiyonlar -->
+        <div class="w-full lg:w-auto flex flex-wrap items-center justify-between lg:justify-end gap-2">
+          <select id="lang-select-app" onchange="setLanguage(this.value)" aria-label="Dil Seçimi"
+            class="px-2.5 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs font-bold text-white focus:outline-none focus:border-core-400">
+            <option value="tr">TR</option>
+            <option value="en">EN</option>
+            <option value="de">DE</option>
+            <option value="ru">RU</option>
+            <option value="ar">AR</option>
+            <option value="fr">FR</option>
+            <option value="ja">JA</option>
+            <option value="zh">ZH</option>
+          </select>
+          <button type="button" onclick="openProfileModal()"
+            class="flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-slate-700/80 transition">
+            <img id="header-user-avatar" src="" alt="PP" onerror="this.src='https://placehold.co/64x64/1e293b/f8fafc?text=U'"
+              class="w-7 h-7 rounded-full object-cover border border-slate-600" />
+            <span id="header-user-label" class="text-xs font-bold text-white flex items-center gap-1"></span>
+          </button>
+          <button type="button" onclick="openProfileModal()" data-i18n="editProfileBtn"
+            class="px-2.5 py-2 rounded-xl text-xs font-semibold bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-700 transition">
+            Profilimi Düzenle
+          </button>
+          <button type="button" onclick="handleLogout()" data-i18n="logoutBtn"
+            class="px-2.5 py-2 rounded-xl text-xs font-semibold bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/30 transition">
+            Çıkış
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- İçerik Alanı -->
+    <main class="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 py-6 space-y-6">
+      <!-- KOLEKSİYONUM BÖLÜMÜ -->
+      <section id="section-collection" class="space-y-5">
+        <div class="glass-panel rounded-3xl p-4 sm:p-6 border border-slate-800/90 space-y-4">
+          <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            <div>
+              <h2 data-i18n="showcaseTitle" class="font-display font-extrabold text-lg sm:text-xl text-white">MONSUNO VİTRİNİ &amp; KOLEKSİYONUM</h2>
+              <p data-i18n="showcaseSubtitle" class="text-xs text-slate-400 mt-1">
+                Figür, Capsule ve Cards parçalarının fotoğraflarını yükleyip yönetici onayına gönder; tamamlanan her karakter +1 Monsuno sayılır.
+              </p>
+            </div>
+            <div class="flex flex-wrap items-center gap-2.5">
+              <div class="px-3.5 py-2 rounded-2xl bg-slate-950 border border-slate-800 text-xs">
+                <span data-i18n="completedMonsunoLabel" class="text-slate-400">Tamamlanan Monsuno:</span>
+                <strong id="stat-monsuno-count" class="text-emerald-400 font-extrabold ml-1">0 / 1</strong>
+              </div>
+              <div class="px-3.5 py-2 rounded-2xl bg-slate-950 border border-slate-800 text-xs">
+                <span data-i18n="completionLabel" class="text-slate-400">Tamamlama:</span>
+                <strong id="stat-completion-pct" class="text-core-400 font-extrabold ml-1">%0</strong>
+              </div>
+              <button id="owner-add-char-btn" type="button" onclick="openModal('add-char-modal')" data-i18n="addShowcaseBtn"
+                class="hidden px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-xs font-extrabold text-slate-950 transition">
+                + Vitrine Ekle
+              </button>
+              <button id="owner-edit-char-btn" type="button" onclick="openEditShowcaseModal()" data-i18n="editShowcaseBtn"
+                class="hidden px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-amber-300 border border-amber-500/30 transition">
+                ✏️ Vitrini Düzenle
+              </button>
+            </div>
+          </div>
+
+          <!-- Arama ve Faction Filtreleri -->
+          <div class="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 pt-2 border-t border-slate-800/80">
+            <input id="collection-search" type="text" oninput="renderCollection()" data-i18n-placeholder="searchShowcasePlaceholder" placeholder="Vitrinde ara (örn: LOCK)..."
+              class="w-full md:w-72 px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-core-400" />
+            <div class="flex flex-wrap items-center gap-1.5">
+              <button type="button" onclick="setFactionFilter('ALL')" data-faction="ALL" data-i18n="filterAll"
+                class="faction-filter-btn px-3 py-1.5 rounded-xl text-xs font-extrabold bg-core-600 text-white transition">Tümü</button>
+              <button type="button" onclick="setFactionFilter('Core-Tech')" data-faction="Core-Tech"
+                class="faction-filter-btn px-3 py-1.5 rounded-xl text-xs font-semibold bg-blue-500/15 text-blue-300 border border-blue-500/30 transition">Core-Tech</button>
+              <button type="button" onclick="setFactionFilter('Eklipse')" data-faction="Eklipse"
+                class="faction-filter-btn px-3 py-1.5 rounded-xl text-xs font-semibold bg-red-500/15 text-red-300 border border-red-500/30 transition">Eklipse</button>
+              <button type="button" onclick="setFactionFilter('S.T.O.R.M.')" data-faction="S.T.O.R.M."
+                class="faction-filter-btn px-3 py-1.5 rounded-xl text-xs font-semibold bg-yellow-500/15 text-yellow-300 border border-yellow-500/30 transition">S.T.O.R.M.</button>
+              <button type="button" onclick="setFactionFilter('Forge Resistance')" data-faction="Forge Resistance"
+                class="faction-filter-btn px-3 py-1.5 rounded-xl text-xs font-semibold bg-orange-500/15 text-orange-300 border border-orange-500/30 transition">Forge Resistance</button>
+              <button type="button" onclick="setFactionFilter('Shape Shifter')" data-faction="Shape Shifter"
+                class="faction-filter-btn px-3 py-1.5 rounded-xl text-xs font-semibold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 transition">Shape Shifter</button>
+            </div>
+          </div>
+        </div>
+
+        <div id="collection-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5"></div>
+      </section>
+
+      <!-- GLOBAL CHAT BÖLÜMÜ -->
+      <section id="section-chat" class="hidden">
+        <div class="glass-panel rounded-3xl border border-slate-800/90 overflow-hidden flex flex-col h-[72vh]">
+          <div class="px-5 py-4 border-b border-slate-800 flex items-center justify-between">
+            <div>
+              <h2 data-i18n="chatTitle" class="font-display font-extrabold text-base text-white">GLOBAL KOLEKSİYONER SOHBETİ</h2>
+              <p data-i18n="chatSubtitle" class="text-xs text-slate-400">Kullanıcı adına tıklayarak profilini ve koleksiyon tamamlama oranını inceleyebilirsin.</p>
+            </div>
+          </div>
+          <div id="chat-messages" class="flex-1 overflow-y-auto p-4 sm:p-5 space-y-3"></div>
+          <form onsubmit="handleSendChat(event)" class="p-3 sm:p-4 border-t border-slate-800 bg-slate-950/70 flex gap-2">
+            <input id="chat-input" type="text" required data-i18n-placeholder="chatInputPlaceholder" placeholder="Koleksiyonculara mesaj yaz..."
+              class="flex-1 px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-core-400" />
+            <button type="submit" data-i18n="sendBtn"
+              class="px-5 py-2.5 rounded-xl bg-core-600 hover:bg-core-500 text-xs font-extrabold text-white transition">
+              Gönder
+            </button>
+          </form>
+        </div>
+      </section>
+
+      <!-- GLOBAL FOTO CHAT BÖLÜMÜ -->
+      <section id="section-photo-chat" class="hidden space-y-5">
+        <div class="glass-panel rounded-3xl p-4 sm:p-6 border border-slate-800/90">
+          <h2 data-i18n="photoChatTitle" class="font-display font-extrabold text-lg text-white">GLOBAL FOTO CHAT</h2>
+          <p data-i18n="photoChatSubtitle" class="text-xs text-slate-400 mt-1">Figür, kapsül ve kart fotoğraflarını toplulukla paylaş.</p>
+          <form onsubmit="handleSendPhotoChat(event)" class="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+            <input id="photo-chat-file" type="file" accept="image/*" required
+              class="px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-xs text-slate-300" />
+            <input id="photo-chat-caption" type="text" data-i18n-placeholder="photoChatPlaceholder" placeholder="Fotoğraf açıklaması..."
+              class="px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white placeholder-slate-500" />
+            <button type="submit" data-i18n="sharePhotoBtn"
+              class="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-xs font-extrabold text-slate-950 transition">
+              Fotoğraf Paylaş
+            </button>
+          </form>
+        </div>
+        <div id="photo-chat-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5"></div>
+      </section>
+
+      <!-- LİDERLİK TABLOSU -->
+      <section id="section-leaderboard" class="hidden space-y-5">
+        <div class="glass-panel rounded-3xl p-4 sm:p-6 border border-slate-800/90">
+          <h2 data-i18n="leaderboardTitle" class="font-display font-extrabold text-lg text-white">KOLEKSİYONER LİDERLİK TABLOSU</h2>
+          <p data-i18n="leaderboardSubtitle" class="text-xs text-slate-400 mt-1">Tamamlanan Monsuno sayısına ve koleksiyon yüzdesine göre sıralama.</p>
+          <div id="leaderboard-list" class="mt-4 space-y-2.5"></div>
+        </div>
+      </section>
+
+      <!-- PAZAR BÖLÜMÜ -->
+      <section id="section-market" class="hidden space-y-5">
+        <div class="glass-panel rounded-3xl p-4 sm:p-6 border border-slate-800/90 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <h2 data-i18n="marketTitle" class="font-display font-extrabold text-lg text-white">TAKAS &amp; SATIŞ PAZARI</h2>
+            <p data-i18n="marketSubtitle" class="text-xs text-slate-400 mt-1">Fazlalık veya aradığın parçalar için fotoğraf ve harici ilan/iletişim linki paylaş.</p>
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
+            <button id="market-tab-all" type="button" onclick="setMarketFilter('all')" data-i18n="marketAll"
+              class="px-3.5 py-2 rounded-xl text-xs font-extrabold bg-core-600 text-white transition">
+              Tüm İlanlar
+            </button>
+            <button id="market-tab-wanted" type="button" onclick="setMarketFilter('wanted')" data-i18n="marketWanted"
+              class="px-3.5 py-2 rounded-xl text-xs font-semibold bg-slate-900 text-slate-300 hover:text-white border border-slate-800 transition">
+              Aranıyor
+            </button>
+            <button id="market-tab-mine" type="button" onclick="setMarketFilter('mine')" data-i18n="marketMine"
+              class="px-3.5 py-2 rounded-xl text-xs font-semibold bg-slate-900 text-slate-300 hover:text-white border border-slate-800 transition">
+              İlanlarım
+            </button>
+            <button type="button" onclick="openModal('create-listing-modal')" data-i18n="marketCreateBtn"
+              class="px-4 py-2 rounded-xl text-xs font-extrabold bg-emerald-500 hover:bg-emerald-400 text-slate-950 transition">
+              + İlan Aç
+            </button>
+          </div>
+        </div>
+
+        <div id="market-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5"></div>
+      </section>
+
+      <!-- TICKET BÖLÜMÜ -->
+      <section id="section-tickets" class="hidden space-y-5">
+        <div class="glass-panel rounded-3xl p-4 sm:p-6 border border-slate-800/90 space-y-4">
+          <div>
+            <h2 data-i18n="ticketsTitle" class="font-display font-extrabold text-lg text-white">HESAP &amp; DESTEK TICKET SİSTEMİ</h2>
+            <p data-i18n="ticketsSubtitle" class="text-xs text-slate-400 mt-1">Kullanıcı adı veya şifre değişikliği taleplerini doğrudan site yöneticisine iletebilirsin.</p>
+          </div>
+          <form onsubmit="handleCreateTicket(event)" class="grid grid-cols-1 md:grid-cols-4 gap-3">
+            <select id="ticket-type" class="px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white">
+              <option value="Kullanıcı Adı Değişikliği" data-i18n="ticketOptUsername">Kullanıcı Adı Değişikliği</option>
+              <option value="Şifre Değişikliği" data-i18n="ticketOptPassword">Şifre Değişikliği</option>
+              <option value="Diğer Talep" data-i18n="ticketOptOther">Diğer Talep</option>
+            </select>
+            <input id="ticket-detail" type="text" required data-i18n-placeholder="ticketDetailPlaceholder" placeholder="Yeni talep edilen bilgi / açıklama..."
+              class="md:col-span-2 px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white placeholder-slate-500" />
+            <button type="submit" data-i18n="sendTicketBtn"
+              class="px-4 py-2.5 rounded-xl bg-core-600 hover:bg-core-500 text-xs font-extrabold text-white transition">
+              Ticket Gönder
+            </button>
+          </form>
+          <div id="tickets-list" class="space-y-2.5 pt-2"></div>
+        </div>
+      </section>
+
+      <!-- DESTEK & İLETİŞİM BÖLÜMÜ -->
+      <section id="section-support" class="hidden">
+        <div class="glass-panel rounded-3xl p-6 sm:p-8 border border-slate-800/90 max-w-2xl mx-auto text-center space-y-4">
+          <div class="w-16 h-16 mx-auto rounded-2xl bg-gradient-to-tr from-amber-500 via-pink-500 to-purple-600 flex items-center justify-center text-2xl font-black text-white shadow-lg">
+            IG
+          </div>
+          <h2 data-i18n="supportTitle" class="font-display font-extrabold text-xl text-white">DESTEK &amp; İLETİŞİM</h2>
+          <p data-i18n="supportDesc" class="text-xs sm:text-sm text-slate-300 leading-relaxed">
+            Şifre sıfırlama, hesap doğrulama, nadir parça danışmanlığı ve topluluk duyuruları için resmi Instagram hesabımız üzerinden bize ulaşabilirsin.
+          </p>
+          <div class="p-4 rounded-2xl bg-slate-950 border border-slate-800 inline-block">
+            <div data-i18n="officialIgLabel" class="text-xs text-slate-400">Resmi Instagram Hesabı</div>
+            <div class="text-base font-extrabold text-amber-400 mt-0.5">@monsunoglobal</div>
+          </div>
+          <div>
+            <a href="https://www.instagram.com/monsunoglobal?gwpx=ZnY0bzJ2M2ppbm5h" target="_blank" rel="noopener noreferrer" data-i18n="openIgBtn"
+              class="inline-flex items-center gap-2 px-6 py-3 rounded-2xl bg-gradient-to-r from-amber-500 to-pink-600 hover:opacity-95 text-xs sm:text-sm font-extrabold text-white shadow-lg transition">
+              Instagram’da Aç (@monsunoglobal)
+            </a>
+          </div>
+        </div>
+      </section>
+
+      <!-- ADMIN PANELİ (SADECE knyazmonsuno) -->
+      <section id="section-admin" class="hidden space-y-6">
+        <!-- Bekleyen Fotoğraf Onayları -->
+        <div class="glass-panel rounded-3xl p-4 sm:p-6 border border-amber-500/30 space-y-4">
+          <div class="flex items-center justify-between">
+            <div>
+              <h2 class="font-display font-extrabold text-lg text-amber-300">FOTOĞRAF DOĞRULAMA KUYRUĞU</h2>
+              <p class="text-xs text-slate-400">Gönderilen Figür, Capsule ve Cards fotoğraflarını inceleyip onay ver veya reddet.</p>
+            </div>
+          </div>
+          <div id="admin-queue-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+        </div>
+
+        <!-- Kayıtlı Kullanıcılar, Ban ve Hesap Yönetimi -->
+        <div class="glass-panel rounded-3xl p-4 sm:p-6 border border-slate-800 space-y-4">
+          <div>
+            <h2 class="font-display font-extrabold text-lg text-white">KAYITLI KOLEKSİYONERLER &amp; BAN YÖNETİMİ</h2>
+            <p class="text-xs text-slate-400">Oyuncunun üzerine tıklayarak koleksiyonundaki tikleri inceleyip kaldırabilir, kullanıcı adı/şifre güncelleyebilir veya banlayabilirsin.</p>
+          </div>
+          <div id="admin-users-list" class="grid grid-cols-1 md:grid-cols-2 gap-3"></div>
+        </div>
+
+        <!-- Gelen Ticketlar -->
+        <div class="glass-panel rounded-3xl p-4 sm:p-6 border border-slate-800 space-y-4">
+          <h2 class="font-display font-extrabold text-lg text-white">GELEN KULLANICI TICKETLARI</h2>
+          <div id="admin-tickets-list" class="space-y-2.5"></div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Parça Doğrulama / Tik Modalı -->
+  <div id="verify-modal" class="hidden fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="glass-panel w-full max-w-lg rounded-3xl p-5 sm:p-6 border border-slate-700 space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+        <h3 id="verify-modal-title" class="font-display font-black text-base text-white">KARAKTER DOĞRULAMA</h3>
+        <button type="button" onclick="closeModal('verify-modal')" class="px-2.5 py-1 rounded-lg bg-slate-800 text-xs font-bold text-slate-300">✕</button>
+      </div>
+      <div id="verify-slots-container" class="space-y-3"></div>
+    </div>
+  </div>
+
+  <!-- Yeni Karakter Ekleme Modalı (Sadece Admin) -->
+  <div id="add-char-modal" class="hidden fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="glass-panel w-full max-w-md rounded-3xl p-5 sm:p-6 border border-slate-700 space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+        <h3 class="font-display font-black text-base text-white">VİTRİNE YENİ KARAKTER EKLE</h3>
+        <button type="button" onclick="closeModal('add-char-modal')" class="px-2.5 py-1 rounded-lg bg-slate-800 text-xs font-bold text-slate-300">✕</button>
+      </div>
+      <form onsubmit="handleAddCharacter(event)" class="space-y-3.5">
+        <div>
+          <label class="block text-xs font-semibold text-slate-300 mb-1">Karakter Adı</label>
+          <input id="new-char-name" type="text" required placeholder="Örn: EVO"
+            class="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-700 text-sm text-white" />
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-300 mb-1">Faction</label>
+          <select id="new-char-faction" class="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-700 text-sm text-white">
+            <option value="Core-Tech">Core-Tech (Mavi)</option>
+            <option value="Eklipse">Eklipse (Kırmızı)</option>
+            <option value="S.T.O.R.M.">S.T.O.R.M. (Sarı)</option>
+            <option value="Forge Resistance">Forge Resistance (Turuncu)</option>
+            <option value="Shape Shifter">Shape Shifter (Yeşil)</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-300 mb-1">Görsel Yükle (Opsiyonel)</label>
+          <input id="new-char-file" type="file" accept="image/*" class="block w-full text-xs text-slate-400" />
+        </div>
+        <label class="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
+          <input id="new-char-nocapsule" type="checkbox" class="rounded bg-slate-950 border-slate-700" />
+          <span>Kapsülü Üretilmedi (Yok)</span>
+        </label>
+        <div class="flex justify-end gap-2 pt-2">
+          <button type="button" onclick="closeModal('add-char-modal')" class="px-4 py-2 rounded-xl bg-slate-800 text-xs font-bold text-slate-300">İptal</button>
+          <button type="submit" class="px-5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-xs font-extrabold text-slate-950">Vitrine Ekle</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Vitrin Düzenleme / Silme Modalı (Sadece Admin) -->
+  <div id="edit-showcase-modal" class="hidden fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="glass-panel w-full max-w-xl rounded-3xl p-5 sm:p-6 border border-slate-700 space-y-4 max-h-[85vh] overflow-y-auto">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+        <h3 class="font-display font-black text-base text-white">VİTRİN KARAKTERLERİNİ DÜZENLE / SİL</h3>
+        <button type="button" onclick="closeModal('edit-showcase-modal')" class="px-2.5 py-1 rounded-lg bg-slate-800 text-xs font-bold text-slate-300">✕</button>
+      </div>
+      <div id="edit-showcase-list" class="space-y-4"></div>
+    </div>
+  </div>
+
+  <!-- Profil Düzenleme Modalı -->
+  <div id="profile-modal" class="hidden fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="glass-panel w-full max-w-md rounded-3xl p-5 sm:p-6 border border-slate-700 space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+        <h3 class="font-display font-black text-base text-white">PROFİLİMİ DÜZENLE</h3>
+        <button type="button" onclick="closeModal('profile-modal')" class="px-2.5 py-1 rounded-lg bg-slate-800 text-xs font-bold text-slate-300">✕</button>
+      </div>
+      <form onsubmit="handleSaveProfile(event)" class="space-y-4">
+        <div class="flex items-center gap-4">
+          <img id="profile-preview-avatar" src="" alt="Önizleme"
+            class="w-16 h-16 rounded-full object-cover border-2 border-core-400" />
+          <div class="flex-1">
+            <label class="block text-xs font-semibold text-slate-300 mb-1">Profil Fotoğrafı (PP)</label>
+            <input id="profile-avatar-file" type="file" accept="image/*" onchange="handleProfilePhotoChange(event)"
+              class="block w-full text-xs text-slate-400" />
+          </div>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-300 mb-1">Görünen Ad</label>
+          <input id="profile-displayname-input" type="text" required
+            class="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-700 text-sm text-white" />
+        </div>
+        <div class="flex justify-end gap-2">
+          <button type="button" onclick="closeModal('profile-modal')" class="px-4 py-2 rounded-xl bg-slate-800 text-xs font-bold text-slate-300">İptal</button>
+          <button type="submit" class="px-5 py-2 rounded-xl bg-core-600 hover:bg-core-500 text-xs font-extrabold text-white">Kaydet</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Kullanıcı Koleksiyonu & Admin İnceleme Modalı -->
+  <div id="user-inspect-modal" class="hidden fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="glass-panel w-full max-w-2xl rounded-3xl p-5 sm:p-6 border border-slate-700 space-y-4 max-h-[85vh] overflow-y-auto">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+        <div id="inspect-modal-header" class="flex items-center gap-3"></div>
+        <button type="button" onclick="closeModal('user-inspect-modal')" class="px-2.5 py-1 rounded-lg bg-slate-800 text-xs font-bold text-slate-300">✕</button>
+      </div>
+      <div id="inspect-modal-body" class="space-y-4"></div>
+    </div>
+  </div>
+
+  <!-- Pazar Yeni İlan Modalı -->
+  <div id="create-listing-modal" class="hidden fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="glass-panel w-full max-w-md rounded-3xl p-5 sm:p-6 border border-slate-700 space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+        <h3 data-i18n="createListingTitle" class="font-display font-black text-base text-white">YENİ PAZAR İLANI</h3>
+        <button type="button" onclick="closeModal('create-listing-modal')" class="px-2.5 py-1 rounded-lg bg-slate-800 text-xs font-bold text-slate-300">✕</button>
+      </div>
+      <form onsubmit="handleCreateListing(event)" class="space-y-3.5">
+        <div>
+          <label for="listing-title" data-i18n="listingTitleLabel" class="block text-xs font-semibold text-slate-300 mb-1">Başlık</label>
+          <input id="listing-title" type="text" required placeholder="Lock / Evo..."
+            class="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-700 text-sm text-white" />
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+          <div>
+            <label for="listing-type" data-i18n="listingTypeLabel" class="block text-xs font-semibold text-slate-300 mb-1">Tür</label>
+            <select id="listing-type" class="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white">
+              <option value="Takaslık">Takaslık</option>
+              <option value="Satılık">Satılık</option>
+              <option value="Aranıyor">Aranıyor</option>
+            </select>
+          </div>
+          <div>
+            <label for="listing-currency" data-i18n="listingCurrencyLabel" class="block text-xs font-semibold text-slate-300 mb-1">Para Birimi</label>
+            <select id="listing-currency" class="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white">
+              <option value="TL">TL (₺)</option>
+              <option value="Dolar">Dolar ($)</option>
+              <option value="Euro">Euro (€)</option>
+              <option value="Rupi">Rupi (₹)</option>
+            </select>
+          </div>
+          <div>
+            <label for="listing-price" data-i18n="listingPriceLabel" class="block text-xs font-semibold text-slate-300 mb-1">Fiyat / Not</label>
+            <input id="listing-price" type="text" required placeholder="450"
+              class="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white" />
+          </div>
+        </div>
+        <div>
+          <label for="listing-link" data-i18n="listingLinkLabel" class="block text-xs font-semibold text-slate-300 mb-1">İlan / İletişim Linki (Opsiyonel)</label>
+          <input id="listing-link" type="url" placeholder="https://..."
+            class="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white" />
+        </div>
+        <div>
+          <label for="listing-photo" data-i18n="listingPhotoLabel" class="block text-xs font-semibold text-slate-300 mb-1">Ürün Fotoğrafı</label>
+          <input id="listing-photo" type="file" accept="image/*" class="block w-full text-xs text-slate-400" />
+        </div>
+        <div>
+          <label for="listing-desc" data-i18n="listingDescLabel" class="block text-xs font-semibold text-slate-300 mb-1">Açıklama</label>
+          <textarea id="listing-desc" rows="2" placeholder="..."
+            class="w-full px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white"></textarea>
+        </div>
+        <div class="flex justify-end gap-2 pt-2">
+          <button type="button" onclick="closeModal('create-listing-modal')" data-i18n="cancelBtn" class="px-4 py-2 rounded-xl bg-slate-800 text-xs font-bold text-slate-300">İptal</button>
+          <button type="submit" data-i18n="publishBtn" class="px-5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-xs font-extrabold text-slate-950">Yayınla</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Toast Bildirim Kutusu -->
+  <div id="toast-box" class="hidden fixed bottom-5 right-5 z-[60] glass-panel px-4 py-3 rounded-2xl border border-core-400/50 text-xs font-bold text-white shadow-2xl"></div>
+
+  <script>
+    const OWNER_USERNAME = 'knyazmonsuno';
+    const OWNER_PASSWORD = 'knyazsuno58';
+
+    const CURRENCY_SYMBOLS = {
+      TL: '₺',
+      Dolar: '$',
+      Euro: '€',
+      Rupi: '₹'
+    };
+
+    const FACTION_STYLES = {
+      'Core-Tech': {
+        cardBg: 'bg-gradient-to-b from-blue-950/90 to-slate-950 border-blue-500/45',
+        plateBg: 'bg-blue-600 text-white',
+        badgeText: 'text-blue-300'
+      },
+      'Eklipse': {
+        cardBg: 'bg-gradient-to-b from-red-950/90 to-slate-950 border-red-500/45',
+        plateBg: 'bg-red-600 text-white',
+        badgeText: 'text-red-300'
+      },
+      'S.T.O.R.M.': {
+        cardBg: 'bg-gradient-to-b from-yellow-950/85 to-slate-950 border-yellow-500/45',
+        plateBg: 'bg-yellow-400 text-slate-950',
+        badgeText: 'text-yellow-300'
+      },
+      'Forge Resistance': {
+        cardBg: 'bg-gradient-to-b from-orange-950/85 to-slate-950 border-orange-500/45',
+        plateBg: 'bg-orange-500 text-slate-950',
+        badgeText: 'text-orange-300'
+      },
+      'Shape Shifter': {
+        cardBg: 'bg-gradient-to-b from-emerald-950/85 to-slate-950 border-emerald-500/45',
+        plateBg: 'bg-emerald-500 text-slate-950',
+        badgeText: 'text-emerald-300'
+      }
+    };
+
+    const TRANSLATIONS = {
+      tr: {
+        langName: 'Türkçe',
+        loginUsernameLabel: 'Kullanıcı Adı',
+        loginUsernamePlaceholder: 'Kullanıcı adı',
+        loginPasswordLabel: 'Şifre',
+        forgotPasswordLink: 'Şifremi unuttum',
+        loginButton: 'Giriş Yap',
+        registerTab: 'Kayıt Ol',
+        regUsernameLabel: 'Kullanıcı Adı',
+        regUsernamePlaceholder: 'Kullanıcı adı',
+        regDisplayNameLabel: 'Görünen Ad',
+        regDisplayNamePlaceholder: 'Görünen ad',
+        regPasswordLabel: 'Şifre',
+        registerNoteWarning: 'Bilgilerinizi lütfen not alınız, daha sonra değiştiremezsiniz.',
+        registerButton: 'Kayıt Ol ve Başla',
+        languageLabel: 'Dil / Language',
+        headerSub: 'Koleksiyon • Chat • Pazar',
+        navCollection: 'Koleksiyonum',
+        navChat: 'Global Chat',
+        navPhotoChat: 'Foto Chat',
+        navLeaderboard: 'Liderlik',
+        navMarket: 'Pazar',
+        navTickets: 'Ticket',
+        navSupport: 'Destek & İletişim',
+        navAdmin: 'Admin Paneli',
+        editProfileBtn: 'Profilimi Düzenle',
+        logoutBtn: 'Çıkış',
+        showcaseTitle: 'MONSUNO VİTRİNİ & KOLEKSİYONUM',
+        showcaseSubtitle: 'Figür, Capsule ve Cards parçalarının fotoğraflarını yükleyip yönetici onayına gönder; tamamlanan her karakter +1 Monsuno sayılır.',
+        completedMonsunoLabel: 'Tamamlanan Monsuno:',
+        completionLabel: 'Tamamlama:',
+        addShowcaseBtn: '+ Vitrine Ekle',
+        editShowcaseBtn: '✏️ Vitrini Düzenle',
+        searchShowcasePlaceholder: 'Vitrinde ara (örn: LOCK)...',
+        filterAll: 'Tümü',
+        verifyOrEdit: 'Doğrula / Düzenle',
+        slotFigure: 'Figür',
+        slotCapsule: 'Capsule',
+        slotCards: 'Cards',
+        slotNone: 'YOK',
+        noCharFound: 'Aramanıza uygun karakter bulunamadı.',
+        statusApproved: 'Onaylı (✓)',
+        statusPending: 'Yönetici Onayı Bekliyor',
+        statusNone: 'Henüz Doğrulanmadı',
+        removeOwnTickBtn: 'Kendi Koleksiyonumdan Tiki Kaldır',
+        sendPhotoBtn: 'Fotoğraf Gönder',
+        chatTitle: 'GLOBAL KOLEKSİYONER SOHBETİ',
+        chatSubtitle: 'Kullanıcı adına tıklayarak profilini ve koleksiyon tamamlama oranını inceleyebilirsin.',
+        chatInputPlaceholder: 'Koleksiyonculara mesaj yaz...',
+        sendBtn: 'Gönder',
+        noChatMsg: 'Henüz mesaj yok. İlk mesajı sen gönder!',
+        deleteBtn: 'Sil',
+        translateBtn: 'Çevir',
+        translatingText: 'Çevriliyor...',
+        translatedBadge: 'Çeviri',
+        photoChatTitle: 'GLOBAL FOTO CHAT',
+        photoChatSubtitle: 'Figür, kapsül ve kart fotoğraflarını toplulukla paylaş.',
+        photoChatPlaceholder: 'Fotoğraf açıklaması...',
+        sharePhotoBtn: 'Fotoğraf Paylaş',
+        noPhotoMsg: 'Henüz fotoğraf paylaşılmadı.',
+        leaderboardTitle: 'KOLEKSİYONER LİDERLİK TABLOSU',
+        leaderboardSubtitle: 'Tamamlanan Monsuno sayısına ve koleksiyon yüzdesine göre sıralama.',
+        completedSuffix: 'Tamamlandı',
+        marketTitle: 'TAKAS & SATIŞ PAZARI',
+        marketSubtitle: 'Fazlalık veya aradığın parçalar için fotoğraf ve harici ilan/iletişim linki paylaş.',
+        marketAll: 'Tüm İlanlar',
+        marketWanted: 'Aranıyor',
+        marketMine: 'İlanlarım',
+        marketCreateBtn: '+ İlan Aç',
+        noMarketMsg: 'Bu kategoride henüz ilan bulunmuyor.',
+        typeTrade: 'Takaslık',
+        typeSale: 'Satılık',
+        typeWanted: 'Aranıyor',
+        createListingTitle: 'YENİ PAZAR İLANI',
+        listingTitleLabel: 'Başlık',
+        listingTypeLabel: 'Tür',
+        listingCurrencyLabel: 'Para Birimi',
+        listingPriceLabel: 'Fiyat / Not',
+        listingLinkLabel: 'İlan / İletişim Linki (Opsiyonel)',
+        listingPhotoLabel: 'Ürün Fotoğrafı',
+        listingDescLabel: 'Açıklama',
+        cancelBtn: 'İptal',
+        publishBtn: 'Yayınla',
+        ticketsTitle: 'HESAP & DESTEK TICKET SİSTEMİ',
+        ticketsSubtitle: 'Kullanıcı adı veya şifre değişikliği taleplerini doğrudan site yöneticisine iletebilirsin.',
+        ticketOptUsername: 'Kullanıcı Adı Değişikliği',
+        ticketOptPassword: 'Şifre Değişikliği',
+        ticketOptOther: 'Diğer Talep',
+        ticketDetailPlaceholder: 'Yeni talep edilen bilgi / açıklama...',
+        sendTicketBtn: 'Ticket Gönder',
+        noTicketMsg: 'Henüz oluşturulmuş bir ticket talebin yok.',
+        reportBtn: 'Raporla',
+        reportSentToast: 'Rapor site yöneticisine iletildi.',
+        reportsAdminTitle: 'GELEN KULLANICI RAPORLARI',
+        reportsAdminSubtitle: 'Global Chat, Foto Chat ve Pazar ilanları için gönderilen raporları incele.',
+        noReportMsg: 'Henüz bekleyen rapor bulunmuyor.',
+        dismissReportBtn: 'Raporu Kapat',
+        deleteReportedContentBtn: 'İçeriği Sil',
+        supportTitle: 'DESTEK & İLETİŞİM',
+        supportDesc: 'Şifre sıfırlama, hesap doğrulama, nadir parça danışmanlığı ve topluluk duyuruları için resmi Instagram hesabımız üzerinden bize ulaşabilirsin.',
+        officialIgLabel: 'Resmi Instagram Hesabı',
+        openIgBtn: 'Instagram’da Aç (@monsunoglobal)'
+      },
+      en: {
+        langName: 'English',
+        loginUsernameLabel: 'Username',
+        loginUsernamePlaceholder: 'Username',
+        loginPasswordLabel: 'Password',
+        forgotPasswordLink: 'Forgot password',
+        loginButton: 'Log In',
+        registerTab: 'Sign Up',
+        regUsernameLabel: 'Username',
+        regUsernamePlaceholder: 'Username',
+        regDisplayNameLabel: 'Display Name',
+        regDisplayNamePlaceholder: 'Display name',
+        regPasswordLabel: 'Password',
+        registerNoteWarning: 'Please note down your details; you cannot change them later.',
+        registerButton: 'Sign Up & Start',
+        languageLabel: 'Language',
+        headerSub: 'Collection • Chat • Market',
+        navCollection: 'My Collection',
+        navChat: 'Global Chat',
+        navPhotoChat: 'Photo Chat',
+        navLeaderboard: 'Leaderboard',
+        navMarket: 'Market',
+        navTickets: 'Tickets',
+        navSupport: 'Support & Contact',
+        navAdmin: 'Admin Panel',
+        editProfileBtn: 'Edit Profile',
+        logoutBtn: 'Log Out',
+        showcaseTitle: 'MONSUNO SHOWCASE & COLLECTION',
+        showcaseSubtitle: 'Upload photos of your Figure, Capsule and Cards for admin approval; each completed character counts as +1 Monsuno.',
+        completedMonsunoLabel: 'Completed Monsunos:',
+        completionLabel: 'Completion:',
+        addShowcaseBtn: '+ Add to Showcase',
+        editShowcaseBtn: '✏️ Edit Showcase',
+        searchShowcasePlaceholder: 'Search showcase (e.g. LOCK)...',
+        filterAll: 'All',
+        verifyOrEdit: 'Verify / Edit',
+        slotFigure: 'Figure',
+        slotCapsule: 'Capsule',
+        slotCards: 'Cards',
+        slotNone: 'NONE',
+        noCharFound: 'No characters matched your search.',
+        statusApproved: 'Approved (✓)',
+        statusPending: 'Pending Admin Approval',
+        statusNone: 'Not Verified Yet',
+        removeOwnTickBtn: 'Remove Tick From My Collection',
+        sendPhotoBtn: 'Send Photo',
+        chatTitle: 'GLOBAL COLLECTOR CHAT',
+        chatSubtitle: 'Click on any username to view their profile and collection progress.',
+        chatInputPlaceholder: 'Write a message to collectors...',
+        sendBtn: 'Send',
+        noChatMsg: 'No messages yet. Be the first to say hello!',
+        deleteBtn: 'Delete',
+        translateBtn: 'Translate',
+        translatingText: 'Translating...',
+        translatedBadge: 'Translation',
+        photoChatTitle: 'GLOBAL PHOTO CHAT',
+        photoChatSubtitle: 'Share photos of your figures, capsules and cards with the community.',
+        photoChatPlaceholder: 'Photo caption...',
+        sharePhotoBtn: 'Share Photo',
+        noPhotoMsg: 'No photos shared yet.',
+        leaderboardTitle: 'COLLECTOR LEADERBOARD',
+        leaderboardSubtitle: 'Ranked by completed Monsunos and collection completion percentage.',
+        completedSuffix: 'Completed',
+        marketTitle: 'TRADE & SALES MARKET',
+        marketSubtitle: 'Share photos and external listing/contact links for extras or wanted items.',
+        marketAll: 'All Listings',
+        marketWanted: 'Wanted',
+        marketMine: 'My Listings',
+        marketCreateBtn: '+ New Listing',
+        noMarketMsg: 'No listings in this category yet.',
+        typeTrade: 'For Trade',
+        typeSale: 'For Sale',
+        typeWanted: 'Wanted',
+        createListingTitle: 'NEW MARKET LISTING',
+        listingTitleLabel: 'Title',
+        listingTypeLabel: 'Type',
+        listingCurrencyLabel: 'Currency',
+        listingPriceLabel: 'Price / Note',
+        listingLinkLabel: 'Listing / Contact Link (Optional)',
+        listingPhotoLabel: 'Item Photo',
+        listingDescLabel: 'Description',
+        cancelBtn: 'Cancel',
+        publishBtn: 'Publish',
+        ticketsTitle: 'ACCOUNT & SUPPORT TICKETS',
+        ticketsSubtitle: 'Send username or password change requests directly to the site administrator.',
+        ticketOptUsername: 'Username Change',
+        ticketOptPassword: 'Password Change',
+        ticketOptOther: 'Other Request',
+        ticketDetailPlaceholder: 'Requested new details / description...',
+        sendTicketBtn: 'Submit Ticket',
+        noTicketMsg: 'You have not created any tickets yet.',
+        reportBtn: 'Report',
+        reportSentToast: 'Report sent to the site administrator.',
+        reportsAdminTitle: 'SUBMITTED USER REPORTS',
+        reportsAdminSubtitle: 'Review reports submitted for Global Chat, Photo Chat and Market listings.',
+        noReportMsg: 'No reports submitted yet.',
+        dismissReportBtn: 'Dismiss Report',
+        deleteReportedContentBtn: 'Delete Content',
+        supportTitle: 'SUPPORT & CONTACT',
+        supportDesc: 'Reach us via our official Instagram account for password resets, verification, rare item advice and community updates.',
+        officialIgLabel: 'Official Instagram Account',
+        openIgBtn: 'Open on Instagram (@monsunoglobal)'
+      },
+      de: {
+        langName: 'Deutsch',
+        loginUsernameLabel: 'Benutzername',
+        loginUsernamePlaceholder: 'Benutzername',
+        loginPasswordLabel: 'Passwort',
+        forgotPasswordLink: 'Passwort vergessen',
+        loginButton: 'Anmelden',
+        registerTab: 'Registrieren',
+        regUsernameLabel: 'Benutzername',
+        regUsernamePlaceholder: 'Benutzername',
+        regDisplayNameLabel: 'Anzeigename',
+        regDisplayNamePlaceholder: 'Anzeigename',
+        regPasswordLabel: 'Passwort',
+        registerNoteWarning: 'Bitte notieren Sie Ihre Daten, Sie können sie später nicht ändern.',
+        registerButton: 'Registrieren & Starten',
+        languageLabel: 'Sprache',
+        headerSub: 'Sammlung • Chat • Markt',
+        navCollection: 'Sammlung',
+        navChat: 'Globaler Chat',
+        navPhotoChat: 'Foto-Chat',
+        navLeaderboard: 'Rangliste',
+        navMarket: 'Markt',
+        navTickets: 'Tickets',
+        navSupport: 'Support & Kontakt',
+        navAdmin: 'Admin-Bereich',
+        editProfileBtn: 'Profil bearbeiten',
+        logoutBtn: 'Abmelden',
+        showcaseTitle: 'MONSUNO VITRINE & SAMMLUNG',
+        showcaseSubtitle: 'Lade Fotos von Figur, Kapsel und Karten zur Admin-Prüfung hoch; jeder vollständige Charakter zählt als +1 Monsuno.',
+        completedMonsunoLabel: 'Abgeschlossene Monsunos:',
+        completionLabel: 'Fortschritt:',
+        addShowcaseBtn: '+ Hinzufügen',
+        editShowcaseBtn: '✏️ Vitrine bearbeiten',
+        searchShowcasePlaceholder: 'Vitrine durchsuchen (z.B. LOCK)...',
+        filterAll: 'Alle',
+        verifyOrEdit: 'Prüfen / Bearbeiten',
+        slotFigure: 'Figur',
+        slotCapsule: 'Kapsel',
+        slotCards: 'Karten',
+        slotNone: 'KEINE',
+        noCharFound: 'Keine Charaktere gefunden.',
+        statusApproved: 'Bestätigt (✓)',
+        statusPending: 'Wartet auf Bestätigung',
+        statusNone: 'Noch nicht bestätigt',
+        removeOwnTickBtn: 'Häkchen aus meiner Sammlung entfernen',
+        sendPhotoBtn: 'Foto senden',
+        chatTitle: 'GLOBALER SAMMLER-CHAT',
+        chatSubtitle: 'Klicke auf einen Benutzernamen, um Profil und Sammlungsfortschritt anzusehen.',
+        chatInputPlaceholder: 'Nachricht an Sammler schreiben...',
+        sendBtn: 'Senden',
+        noChatMsg: 'Noch keine Nachrichten.',
+        deleteBtn: 'Löschen',
+        translateBtn: 'Übersetzen',
+        translatingText: 'Übersetze...',
+        translatedBadge: 'Übersetzung',
+        photoChatTitle: 'GLOBALER FOTO-CHAT',
+        photoChatSubtitle: 'Teile Fotos deiner Figuren, Kapseln und Karten mit der Community.',
+        photoChatPlaceholder: 'Fotobeschreibung...',
+        sharePhotoBtn: 'Foto teilen',
+        noPhotoMsg: 'Noch keine Fotos geteilt.',
+        leaderboardTitle: 'SAMMLER-RANGLISTE',
+        leaderboardSubtitle: 'Sortiert nach abgeschlossenen Monsunos und Sammlungsfortschritt.',
+        completedSuffix: 'Abgeschlossen',
+        marketTitle: 'TAUSCH- & VERKAUFSMARKT',
+        marketSubtitle: 'Teile Fotos und Links für doppelte oder gesuchte Teile.',
+        marketAll: 'Alle Angebote',
+        marketWanted: 'Gesucht',
+        marketMine: 'Meine Angebote',
+        marketCreateBtn: '+ Angebot erstellen',
+        noMarketMsg: 'Keine Angebote in dieser Kategorie.',
+        typeTrade: 'Tausch',
+        typeSale: 'Verkauf',
+        typeWanted: 'Gesucht',
+        createListingTitle: 'NEUES MARKTANGEBOT',
+        listingTitleLabel: 'Titel',
+        listingTypeLabel: 'Typ',
+        listingCurrencyLabel: 'Währung',
+        listingPriceLabel: 'Preis / Hinweis',
+        listingLinkLabel: 'Link / Kontakt (Optional)',
+        listingPhotoLabel: 'Produktfoto',
+        listingDescLabel: 'Beschreibung',
+        cancelBtn: 'Abbrechen',
+        publishBtn: 'Veröffentlichen',
+        ticketsTitle: 'KONTO- & SUPPORT-TICKETS',
+        ticketsSubtitle: 'Sende Anfragen zur Änderung von Benutzername oder Passwort an den Administrator.',
+        ticketOptUsername: 'Benutzername ändern',
+        ticketOptPassword: 'Passwort ändern',
+        ticketOptOther: 'Sonstige Anfrage',
+        ticketDetailPlaceholder: 'Gewünschte Änderung / Beschreibung...',
+        sendTicketBtn: 'Ticket senden',
+        noTicketMsg: 'Noch keine Tickets erstellt.',
+        supportTitle: 'SUPPORT & KONTAKT',
+        supportDesc: 'Kontaktiere uns über Instagram für Passwort-Reset, Verifizierung und Community-News.',
+        officialIgLabel: 'Offizieller Instagram-Account',
+        openIgBtn: 'Auf Instagram öffnen (@monsunoglobal)'
+      },
+      ru: {
+        langName: 'Русский',
+        loginUsernameLabel: 'Имя пользователя',
+        loginUsernamePlaceholder: 'Имя пользователя',
+        loginPasswordLabel: 'Пароль',
+        forgotPasswordLink: 'Забыли пароль',
+        loginButton: 'Войти',
+        registerTab: 'Регистрация',
+        regUsernameLabel: 'Имя пользователя',
+        regUsernamePlaceholder: 'Имя пользователя',
+        regDisplayNameLabel: 'Отображаемое имя',
+        regDisplayNamePlaceholder: 'Отображаемое имя',
+        regPasswordLabel: 'Пароль',
+        registerNoteWarning: 'Пожалуйста, запишите свои данные, позже изменить их нельзя.',
+        registerButton: 'Регистрация',
+        languageLabel: 'Язык',
+        headerSub: 'Коллекция • Чат • Рынок',
+        navCollection: 'Коллекция',
+        navChat: 'Общий чат',
+        navPhotoChat: 'Фото-чат',
+        navLeaderboard: 'Рейтинг',
+        navMarket: 'Рынок',
+        navTickets: 'Тикеты',
+        navSupport: 'Поддержка',
+        navAdmin: 'Админ-панель',
+        editProfileBtn: 'Профиль',
+        logoutBtn: 'Выйти',
+        showcaseTitle: 'ВИТРИНА И КОЛЛЕКЦИЯ MONSUNO',
+        showcaseSubtitle: 'Загружайте фото фигурки, капсулы и карт на проверку; каждый собранный персонаж дает +1 Monsuno.',
+        completedMonsunoLabel: 'Собрано Monsuno:',
+        completionLabel: 'Прогресс:',
+        addShowcaseBtn: '+ Добавить',
+        editShowcaseBtn: '✏️ Редактировать',
+        searchShowcasePlaceholder: 'Поиск по витрине (напр. LOCK)...',
+        filterAll: 'Все',
+        verifyOrEdit: 'Подтвердить / Изменить',
+        slotFigure: 'Фигурка',
+        slotCapsule: 'Капсула',
+        slotCards: 'Карты',
+        slotNone: 'НЕТ',
+        noCharFound: 'Персонажи не найдены.',
+        statusApproved: 'Подтверждено (✓)',
+        statusPending: 'Ожидает проверки',
+        statusNone: 'Не подтверждено',
+        removeOwnTickBtn: 'Убрать отметку из коллекции',
+        sendPhotoBtn: 'Отправить фото',
+        chatTitle: 'ОБЩИЙ ЧАТ КОЛЛЕКЦИОНЕРОВ',
+        chatSubtitle: 'Нажмите на имя пользователя, чтобы посмотреть его профиль и коллекцию.',
+        chatInputPlaceholder: 'Написать сообщение...',
+        sendBtn: 'Отправить',
+        noChatMsg: 'Сообщений пока нет.',
+        deleteBtn: 'Удалить',
+        translateBtn: 'Перевести',
+        translatingText: 'Перевод...',
+        translatedBadge: 'Перевод',
+        photoChatTitle: 'ОБЩИЙ ФОТО-ЧАТ',
+        photoChatSubtitle: 'Делитесь фотографиями фигурок, капсул и карт.',
+        photoChatPlaceholder: 'Описание фото...',
+        sharePhotoBtn: 'Поделиться фото',
+        noPhotoMsg: 'Фотографий пока нет.',
+        leaderboardTitle: 'РЕЙТИНГ КОЛЛЕКЦИОНЕРОВ',
+        leaderboardSubtitle: 'Сортировка по количеству собранных Monsuno и проценту коллекции.',
+        completedSuffix: 'Собрано',
+        marketTitle: 'РЫНОК ОБМЕНА И ПРОДАЖИ',
+        marketSubtitle: 'Делитесь фото и ссылками для обмена, продажи или поиска.',
+        marketAll: 'Все объявления',
+        marketWanted: 'Ищу',
+        marketMine: 'Мои объявления',
+        marketCreateBtn: '+ Создать',
+        noMarketMsg: 'В этой категории пока нет объявлений.',
+        typeTrade: 'Обмен',
+        typeSale: 'Продажа',
+        typeWanted: 'Ищу',
+        createListingTitle: 'НОВОЕ ОБЪЯВЛЕНИЕ',
+        listingTitleLabel: 'Название',
+        listingTypeLabel: 'Тип',
+        listingCurrencyLabel: 'Валюта',
+        listingPriceLabel: 'Цена / Заметка',
+        listingLinkLabel: 'Ссылка (необязательно)',
+        listingPhotoLabel: 'Фото товара',
+        listingDescLabel: 'Описание',
+        cancelBtn: 'Отмена',
+        publishBtn: 'Опубликовать',
+        ticketsTitle: 'ТИКЕТЫ ПОДДЕРЖКИ',
+        ticketsSubtitle: 'Отправьте запрос администратору на смену имени пользователя или пароля.',
+        ticketOptUsername: 'Смена имени пользователя',
+        ticketOptPassword: 'Смена пароля',
+        ticketOptOther: 'Другой запрос',
+        ticketDetailPlaceholder: 'Новая информация / описание...',
+        sendTicketBtn: 'Отправить тикет',
+        noTicketMsg: 'У вас пока нет тикетов.',
+        supportTitle: 'ПОДДЕРЖКА И КОНТАКТЫ',
+        supportDesc: 'Свяжитесь с нами в официальном Instagram для сброса пароля и вопросов по коллекции.',
+        officialIgLabel: 'Официальный Instagram',
+        openIgBtn: 'Открыть в Instagram (@monsunoglobal)'
+      },
+      ar: {
+        langName: 'العربية',
+        loginUsernameLabel: 'اسم المستخدم',
+        loginUsernamePlaceholder: 'اسم المستخدم',
+        loginPasswordLabel: 'كلمة المرور',
+        forgotPasswordLink: 'نسيت كلمة المرور',
+        loginButton: 'تسجيل الدخول',
+        registerTab: 'إنشاء حساب',
+        regUsernameLabel: 'اسم المستخدم',
+        regUsernamePlaceholder: 'اسم المستخدم',
+        regDisplayNameLabel: 'الاسم الظاهر',
+        regDisplayNamePlaceholder: 'الاسم الظاهر',
+        regPasswordLabel: 'كلمة المرور',
+        registerNoteWarning: 'يرجى تدوين بياناتك؛ لا يمكنك تغييرها لاحقًا.',
+        registerButton: 'إنشاء حساب',
+        languageLabel: 'اللغة',
+        headerSub: 'المجموعة • الدردشة • السوق',
+        navCollection: 'مجموعتي',
+        navChat: 'الدردشة العامة',
+        navPhotoChat: 'دردشة الصور',
+        navLeaderboard: 'المتصدرون',
+        navMarket: 'السوق',
+        navTickets: 'التذاكر',
+        navSupport: 'الدعم والتواصل',
+        navAdmin: 'لوحة الإدارة',
+        editProfileBtn: 'تعديل الملف',
+        logoutBtn: 'خروج',
+        showcaseTitle: 'معرض ومجموعة MONSUNO',
+        showcaseSubtitle: 'ارفع صور المجسم والكبسولة والبطاقات للمراجعة؛ كل شخصية مكتملة تحسب +1 Monsuno.',
+        completedMonsunoLabel: 'Monsuno المكتملة:',
+        completionLabel: 'نسبة الإكمال:',
+        addShowcaseBtn: '+ إضافة للمعرض',
+        editShowcaseBtn: '✏️ تعديل المعرض',
+        searchShowcasePlaceholder: 'ابحث في المعرض (مثال: LOCK)...',
+        filterAll: 'الكل',
+        verifyOrEdit: 'تأكيد / تعديل',
+        slotFigure: 'مجسم',
+        slotCapsule: 'كبسولة',
+        slotCards: 'بطاقات',
+        slotNone: 'لا يوجد',
+        noCharFound: 'لم يتم العثور على شخصيات.',
+        statusApproved: 'مؤكد (✓)',
+        statusPending: 'بانتظار موافقة الإدارة',
+        statusNone: 'غير مؤكد بعد',
+        removeOwnTickBtn: 'إزالة العلامة من مجموعتي',
+        sendPhotoBtn: 'إرسال الصورة',
+        chatTitle: 'دردشة هواة الجمع العامة',
+        chatSubtitle: 'اضغط على اسم المستخدم لعرض ملفه ونسبة إكمال مجموعته.',
+        chatInputPlaceholder: 'اكتب رسالة لهواة الجمع...',
+        sendBtn: 'إرسال',
+        noChatMsg: 'لا توجد رسائل بعد.',
+        deleteBtn: 'حذف',
+        translateBtn: 'ترجمة',
+        translatingText: 'جارٍ الترجمة...',
+        translatedBadge: 'ترجمة',
+        photoChatTitle: 'دردشة الصور العامة',
+        photoChatSubtitle: 'شارك صور المجسمات والكبسولات والبطاقات مع المجتمع.',
+        photoChatPlaceholder: 'وصف الصورة...',
+        sharePhotoBtn: 'مشاركة الصورة',
+        noPhotoMsg: 'لم تتم مشاركة صور بعد.',
+        leaderboardTitle: 'لوحة متصدري هواة الجمع',
+        leaderboardSubtitle: 'الترتيب حسب عدد Monsuno المكتملة ونسبة الإكمال.',
+        completedSuffix: 'مكتمل',
+        marketTitle: 'سوق التبادل والبيع',
+        marketSubtitle: 'شارك الصور والروابط للقطع المعروضة أو المطلوبة.',
+        marketAll: 'الكل',
+        marketWanted: 'مطلوب',
+        marketMine: 'إعلاناتي',
+        marketCreateBtn: '+ إضافة إعلان',
+        noMarketMsg: 'لا توجد إعلانات في هذا القسم.',
+        typeTrade: 'للتبادل',
+        typeSale: 'للبيع',
+        typeWanted: 'مطلوب',
+        createListingTitle: 'إعلان جديد',
+        listingTitleLabel: 'العنوان',
+        listingTypeLabel: 'النوع',
+        listingCurrencyLabel: 'العملة',
+        listingPriceLabel: 'السعر / ملاحظة',
+        listingLinkLabel: 'رابط الإعلان (اختياري)',
+        listingPhotoLabel: 'صورة المنتج',
+        listingDescLabel: 'الوصف',
+        cancelBtn: 'إلغاء',
+        publishBtn: 'نشر',
+        ticketsTitle: 'تذاكر الحساب والدعم',
+        ticketsSubtitle: 'أرسل طلبات تغيير اسم المستخدم أو كلمة المرور إلى مدير الموقع.',
+        ticketOptUsername: 'تغيير اسم المستخدم',
+        ticketOptPassword: 'تغيير كلمة المرور',
+        ticketOptOther: 'طلب آخر',
+        ticketDetailPlaceholder: 'المعلومات الجديدة المطلوبة / الوصف...',
+        sendTicketBtn: 'إرسال التذكرة',
+        noTicketMsg: 'لم تقم بإنشاء أي تذاكر بعد.',
+        supportTitle: 'الدعم والتواصل',
+        supportDesc: 'تواصل معنا عبر حساب إنستغرام الرسمي لاستعادة كلمة المرور والاستفسارات.',
+        officialIgLabel: 'حساب إنستغرام الرسمي',
+        openIgBtn: 'افتح في إنستغرام (@monsunoglobal)'
+      },
+      fr: {
+        langName: 'Français',
+        loginUsernameLabel: 'Nom d’utilisateur',
+        loginUsernamePlaceholder: 'Nom d’utilisateur',
+        loginPasswordLabel: 'Mot de passe',
+        forgotPasswordLink: 'Mot de passe oublié',
+        loginButton: 'Connexion',
+        registerTab: 'Inscription',
+        regUsernameLabel: 'Nom d’utilisateur',
+        regUsernamePlaceholder: 'Nom d’utilisateur',
+        regDisplayNameLabel: 'Nom affiché',
+        regDisplayNamePlaceholder: 'Nom affiché',
+        regPasswordLabel: 'Mot de passe',
+        registerNoteWarning: 'Veuillez noter vos informations, vous ne pourrez plus les modifier ensuite.',
+        registerButton: 'S’inscrire',
+        languageLabel: 'Langue',
+        headerSub: 'Collection • Chat • Marché',
+        navCollection: 'Collection',
+        navChat: 'Chat Global',
+        navPhotoChat: 'Chat Photo',
+        navLeaderboard: 'Classement',
+        navMarket: 'Marché',
+        navTickets: 'Tickets',
+        navSupport: 'Support',
+        navAdmin: 'Admin',
+        editProfileBtn: 'Modifier Profil',
+        logoutBtn: 'Déconnexion',
+        showcaseTitle: 'VITRINE & COLLECTION MONSUNO',
+        showcaseSubtitle: 'Envoyez les photos de Figurine, Capsule et Cartes pour validation ; chaque personnage complet compte +1 Monsuno.',
+        completedMonsunoLabel: 'Monsunos complets :',
+        completionLabel: 'Progression :',
+        addShowcaseBtn: '+ Ajouter',
+        editShowcaseBtn: '✏️ Modifier Vitrine',
+        searchShowcasePlaceholder: 'Rechercher (ex: LOCK)...',
+        filterAll: 'Tout',
+        verifyOrEdit: 'Vérifier / Modifier',
+        slotFigure: 'Figurine',
+        slotCapsule: 'Capsule',
+        slotCards: 'Cartes',
+        slotNone: 'AUCUN',
+        noCharFound: 'Aucun personnage trouvé.',
+        statusApproved: 'Approuvé (✓)',
+        statusPending: 'En attente de validation',
+        statusNone: 'Non vérifié',
+        removeOwnTickBtn: 'Retirer la coche de ma collection',
+        sendPhotoBtn: 'Envoyer Photo',
+        chatTitle: 'CHAT GLOBAL DES COLLECTIONNEURS',
+        chatSubtitle: 'Cliquez sur un utilisateur pour voir son profil et sa progression.',
+        chatInputPlaceholder: 'Écrire un message...',
+        sendBtn: 'Envoyer',
+        noChatMsg: 'Aucun message pour le moment.',
+        deleteBtn: 'Supprimer',
+        translateBtn: 'Traduire',
+        translatingText: 'Traduction...',
+        translatedBadge: 'Traduction',
+        photoChatTitle: 'CHAT PHOTO GLOBAL',
+        photoChatSubtitle: 'Partagez les photos de vos figurines, capsules et cartes.',
+        photoChatPlaceholder: 'Légende de la photo...',
+        sharePhotoBtn: 'Partager Photo',
+        noPhotoMsg: 'Aucune photo partagée.',
+        leaderboardTitle: 'CLASSEMENT DES COLLECTIONNEURS',
+        leaderboardSubtitle: 'Classé par Monsunos complets et pourcentage de collection.',
+        completedSuffix: 'Complété',
+        marketTitle: 'MARCHÉ D’ÉCHANGE & VENTE',
+        marketSubtitle: 'Partagez photos et liens pour vos doubles ou recherches.',
+        marketAll: 'Tout',
+        marketWanted: 'Recherché',
+        marketMine: 'Mes Annonces',
+        marketCreateBtn: '+ Publier',
+        noMarketMsg: 'Aucune annonce dans cette catégorie.',
+        typeTrade: 'Échange',
+        typeSale: 'Vente',
+        typeWanted: 'Recherché',
+        createListingTitle: 'NOUVELLE ANNONCE',
+        listingTitleLabel: 'Titre',
+        listingTypeLabel: 'Type',
+        listingCurrencyLabel: 'Devise',
+        listingPriceLabel: 'Prix / Note',
+        listingLinkLabel: 'Lien (Optionnel)',
+        listingPhotoLabel: 'Photo',
+        listingDescLabel: 'Description',
+        cancelBtn: 'Annuler',
+        publishBtn: 'Publier',
+        ticketsTitle: 'TICKETS DE SUPPORT',
+        ticketsSubtitle: 'Envoyez vos demandes de changement de pseudo ou mot de passe à l’administrateur.',
+        ticketOptUsername: 'Changement de pseudo',
+        ticketOptPassword: 'Changement de mot de passe',
+        ticketOptOther: 'Autre demande',
+        ticketDetailPlaceholder: 'Nouvelle information / description...',
+        sendTicketBtn: 'Envoyer Ticket',
+        noTicketMsg: 'Aucun ticket créé.',
+        supportTitle: 'SUPPORT & CONTACT',
+        supportDesc: 'Contactez-nous via Instagram officiel pour la réinitialisation de mot de passe et vos questions.',
+        officialIgLabel: 'Compte Instagram Officiel',
+        openIgBtn: 'Ouvrir sur Instagram (@monsunoglobal)'
+      },
+      ja: {
+        langName: '日本語',
+        loginUsernameLabel: 'ユーザー名',
+        loginUsernamePlaceholder: 'ユーザー名',
+        loginPasswordLabel: 'パスワード',
+        forgotPasswordLink: 'パスワードをお忘れですか',
+        loginButton: 'ログイン',
+        registerTab: '新規登録',
+        regUsernameLabel: 'ユーザー名',
+        regUsernamePlaceholder: 'ユーザー名',
+        regDisplayNameLabel: '表示名',
+        regDisplayNamePlaceholder: '表示名',
+        regPasswordLabel: 'パスワード',
+        registerNoteWarning: '登録情報はメモしてください。後から変更することはできません。',
+        registerButton: '登録して開始',
+        languageLabel: '言語',
+        headerSub: 'コレクション • チャット • マーケット',
+        navCollection: 'コレクション',
+        navChat: '全体チャット',
+        navPhotoChat: 'フォトチャット',
+        navLeaderboard: 'ランキング',
+        navMarket: 'マーケット',
+        navTickets: 'チケット',
+        navSupport: 'サポート',
+        navAdmin: '管理パネル',
+        editProfileBtn: 'プロフィール編集',
+        logoutBtn: 'ログアウト',
+        showcaseTitle: 'MONSUNO ショーケース＆コレクション',
+        showcaseSubtitle: 'フィギュア、カプセル、カードの写真をアップロードして承認を受けると、完了ごとに +1 Monsuno カウントされます。',
+        completedMonsunoLabel: '完了したMonsuno:',
+        completionLabel: '達成率:',
+        addShowcaseBtn: '+ ショーケース追加',
+        editShowcaseBtn: '✏️ ショーケース編集',
+        searchShowcasePlaceholder: '検索 (例: LOCK)...',
+        filterAll: 'すべて',
+        verifyOrEdit: '認証 / 編集',
+        slotFigure: 'フィギュア',
+        slotCapsule: 'カプセル',
+        slotCards: 'カード',
+        slotNone: 'なし',
+        noCharFound: '一致するキャラクターが見つかりません。',
+        statusApproved: '承認済み (✓)',
+        statusPending: '管理者承認待ち',
+        statusNone: '未認証',
+        removeOwnTickBtn: 'コレクションからチェックを外す',
+        sendPhotoBtn: '写真を送信',
+        chatTitle: 'グローバルコレクターチャット',
+        chatSubtitle: 'ユーザー名をクリックするとプロフィールと達成率を確認できます。',
+        chatInputPlaceholder: 'メッセージを入力...',
+        sendBtn: '送信',
+        noChatMsg: 'まだメッセージはありません。',
+        deleteBtn: '削除',
+        translateBtn: '翻訳',
+        translatingText: '翻訳中...',
+        translatedBadge: '翻訳',
+        photoChatTitle: 'グローバルフォトチャット',
+        photoChatSubtitle: 'フィギュアやカプセル、カードの写真を共有しよう。',
+        photoChatPlaceholder: '写真の説明...',
+        sharePhotoBtn: '写真を共有',
+        noPhotoMsg: 'まだ写真は共有されていません。',
+        leaderboardTitle: 'コレクターランキング',
+        leaderboardSubtitle: '完了したMonsuno数と達成率によるランキング。',
+        completedSuffix: '完了',
+        marketTitle: 'トレード＆販売マーケット',
+        marketSubtitle: '余剰品や探しているアイテムの写真とリンクを共有しましょう。',
+        marketAll: 'すべて',
+        marketWanted: '求む',
+        marketMine: '自分の出品',
+        marketCreateBtn: '+ 出品する',
+        noMarketMsg: 'このカテゴリに出品はありません。',
+        typeTrade: '交換',
+        typeSale: '販売',
+        typeWanted: '求む',
+        createListingTitle: '新規出品',
+        listingTitleLabel: 'タイトル',
+        listingTypeLabel: '種別',
+        listingCurrencyLabel: '通貨',
+        listingPriceLabel: '価格 / メモ',
+        listingLinkLabel: 'リンク（任意）',
+        listingPhotoLabel: '商品画像',
+        listingDescLabel: '説明',
+        cancelBtn: 'キャンセル',
+        publishBtn: '公開する',
+        ticketsTitle: 'アカウント＆サポートチケット',
+        ticketsSubtitle: 'ユーザー名やパスワードの変更リクエストを管理者に送信できます。',
+        ticketOptUsername: 'ユーザー名変更',
+        ticketOptPassword: 'パスワード変更',
+        ticketOptOther: 'その他の要望',
+        ticketDetailPlaceholder: '希望する新しい情報 / 詳細...',
+        sendTicketBtn: 'チケット送信',
+        noTicketMsg: '作成したチケットはありません。',
+        supportTitle: 'サポート＆お問い合わせ',
+        supportDesc: 'パスワード再設定や認証については公式Instagramまでお問い合わせください。',
+        officialIgLabel: '公式Instagramアカウント',
+        openIgBtn: 'Instagramで開く (@monsunoglobal)'
+      },
+      zh: {
+        langName: '中文',
+        loginUsernameLabel: '用户名',
+        loginUsernamePlaceholder: '用户名',
+        loginPasswordLabel: '密码',
+        forgotPasswordLink: '忘记密码',
+        loginButton: '登录',
+        registerTab: '注册',
+        regUsernameLabel: '用户名',
+        regUsernamePlaceholder: '用户名',
+        regDisplayNameLabel: '显示名称',
+        regDisplayNamePlaceholder: '显示名称',
+        regPasswordLabel: '密码',
+        registerNoteWarning: '请记下您的账号信息，之后无法修改。',
+        registerButton: '注册并开始',
+        languageLabel: '语言',
+        headerSub: '收藏 • 聊天 • 市场',
+        navCollection: '我的收藏',
+        navChat: '全球聊天',
+        navPhotoChat: '图片聊天',
+        navLeaderboard: '排行榜',
+        navMarket: '交易市场',
+        navTickets: '工单',
+        navSupport: '支持与联系',
+        navAdmin: '管理面板',
+        editProfileBtn: '编辑资料',
+        logoutBtn: '退出',
+        showcaseTitle: 'MONSUNO 展示柜与收藏',
+        showcaseSubtitle: '上传手办、胶囊和卡牌照片等待审核；每集齐一个角色记为 +1 Monsuno。',
+        completedMonsunoLabel: '已集齐 Monsuno：',
+        completionLabel: '完成度：',
+        addShowcaseBtn: '+ 添加展示',
+        editShowcaseBtn: '✏️ 编辑展示柜',
+        searchShowcasePlaceholder: '搜索展示柜（如 LOCK）...',
+        filterAll: '全部',
+        verifyOrEdit: '验证 / 编辑',
+        slotFigure: '手办',
+        slotCapsule: '胶囊',
+        slotCards: '卡牌',
+        slotNone: '无',
+        noCharFound: '未找到匹配的角色。',
+        statusApproved: '已验证 (✓)',
+        statusPending: '等待管理员审核',
+        statusNone: '尚未验证',
+        removeOwnTickBtn: '从我的收藏中取消勾选',
+        sendPhotoBtn: '发送照片',
+        chatTitle: '全球收藏家聊天室',
+        chatSubtitle: '点击任意用户名可查看其主页和收藏完成度。',
+        chatInputPlaceholder: '给收藏家们发消息...',
+        sendBtn: '发送',
+        noChatMsg: '暂无消息，快来发送第一条吧！',
+        deleteBtn: '删除',
+        translateBtn: '翻译',
+        translatingText: '翻译中...',
+        translatedBadge: '翻译',
+        photoChatTitle: '全球图片聊天',
+        photoChatSubtitle: '与社区分享你的手办、胶囊和卡牌照片。',
+        photoChatPlaceholder: '照片说明...',
+        sharePhotoBtn: '分享照片',
+        noPhotoMsg: '暂无分享照片。',
+        leaderboardTitle: '收藏家排行榜',
+        leaderboardSubtitle: '按已集齐 Monsuno 数量与收藏完成度排序。',
+        completedSuffix: '已完成',
+        marketTitle: '交换与出售市场',
+        marketSubtitle: '发布多余或求购物品的照片和外部链接。',
+        marketAll: '全部发布',
+        marketWanted: '求购中',
+        marketMine: '我的发布',
+        marketCreateBtn: '+ 发布信息',
+        noMarketMsg: '该分类下暂无发布。',
+        typeTrade: '交换',
+        typeSale: '出售',
+        typeWanted: '求购',
+        createListingTitle: '发布新信息',
+        listingTitleLabel: '标题',
+        listingTypeLabel: '类型',
+        listingCurrencyLabel: '货币',
+        listingPriceLabel: '价格 / 备注',
+        listingLinkLabel: '链接（选填）',
+        listingPhotoLabel: '物品照片',
+        listingDescLabel: '说明',
+        cancelBtn: '取消',
+        publishBtn: '发布',
+        ticketsTitle: '账号与支持工单',
+        ticketsSubtitle: '向网站管理员提交修改用户名或密码的请求。',
+        ticketOptUsername: '修改用户名',
+        ticketOptPassword: '修改密码',
+        ticketOptOther: '其他请求',
+        ticketDetailPlaceholder: '申请的新信息 / 说明...',
+        sendTicketBtn: '提交工单',
+        noTicketMsg: '您尚未创建任何工单。',
+        supportTitle: '支持与联系',
+        supportDesc: '如需重置密码或咨询收藏问题，请通过官方 Instagram 联系我们。',
+        officialIgLabel: '官方 Instagram 账号',
+        openIgBtn: '在 Instagram 中打开 (@monsunoglobal)'
+      }
+    };
+
+    const INITIAL_CHARACTERS = [
+      {
+        id: 'char-lock',
+        name: 'LOCK',
+        faction: 'Core-Tech',
+        noCapsule: false,
+        image: 'https://placehold.co/320x320/0f172a/38bdf8?text=LOCK'
+      }
+    ];
+
+    const DEFAULT_OWNER_USER = {
+      username: OWNER_USERNAME,
+      displayName: 'Knyaz Monsuno',
+      password: OWNER_PASSWORD,
+      avatar: 'https://placehold.co/96x96/facc15/0f172a?text=KM',
+      banned: false
+    };
+
+    function loadJSON(key, fallback) {
+      try {
+        const raw = localStorage.getItem(key);
+        return raw ? JSON.parse(raw) : fallback;
+      } catch (e) {
+        return fallback;
+      }
+    }
+
+    let storedUsers = loadJSON('mv3_users', []);
+    if (!storedUsers.some(u => u.username.toLowerCase() === OWNER_USERNAME)) {
+      storedUsers.unshift({ ...DEFAULT_OWNER_USER });
+    }
+
+    const state = {
+      lang: localStorage.getItem('mv3_lang') || 'tr',
+      user: loadJSON('mv3_current_user', null),
+      users: storedUsers,
+      characters: loadJSON('mv3_characters', INITIAL_CHARACTERS),
+      userCollections: loadJSON('mv3_user_collections', {}),
+      queue: loadJSON('mv3_queue', []),
+      chat: loadJSON('mv3_chat', []),
+      photoChat: loadJSON('mv3_photo_chat', []),
+      market: loadJSON('mv3_market', []),
+      tickets: loadJSON('mv3_tickets', []),
+      reports: loadJSON('mv3_reports', []),
+      activeSection: 'collection',
+      activeFactionFilter: 'ALL',
+      activeMarketFilter: 'all',
+      pendingProfileAvatar: null,
+      translationsCache: {}
+    };
+
+    function t(key) {
+      const lang = TRANSLATIONS[state.lang] ? state.lang : 'tr';
+      return TRANSLATIONS[lang]?.[key] || TRANSLATIONS.tr[key] || key;
+    }
+
+    async function translateDynamicText(cacheKey, text) {
+      if (!text) return;
+      const lang = TRANSLATIONS[state.lang] ? state.lang : 'tr';
+      const targetLangName = TRANSLATIONS[lang].langName || 'Turkish';
+      const fullKey = `${lang}::${cacheKey}`;
+
+      state.translationsCache[fullKey] = { loading: true, text: '' };
+      rerenderActiveDynamicViews();
+
+      const prompt = `Translate the following user message into ${targetLangName}. Keep Monsuno character names (like LOCK, EVO, CHARGER) unchanged. Return ONLY the translated text without quotes or extra explanation:\n\n${text}`;
+      const apiKey = "";
+      const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`;
+
+      let delay = 1000;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          const response = await fetch(apiUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: prompt }] }]
+            })
+          });
+          if (!response.ok) throw new Error('HTTP ' + response.status);
+          const result = await response.json();
+          const translated = result?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+          if (translated) {
+            state.translationsCache[fullKey] = { loading: false, text: translated };
+            rerenderActiveDynamicViews();
+            return;
+          }
+        } catch (err) {
+          if (attempt < 2) {
+            await new Promise(r => setTimeout(r, delay));
+            delay *= 2;
+          }
+        }
+      }
+
+      delete state.translationsCache[fullKey];
+      rerenderActiveDynamicViews();
+      showToast('Çeviri şu an yapılamadı, tekrar deneyin.');
+    }
+
+    function rerenderActiveDynamicViews() {
+      if (state.activeSection === 'chat') renderChat();
+      if (state.activeSection === 'photo-chat') renderPhotoChat();
+      if (state.activeSection === 'market') renderMarket();
+    }
+
+    function saveState() {
+      try {
+        localStorage.setItem('mv3_lang', state.lang);
+        localStorage.setItem('mv3_current_user', JSON.stringify(state.user));
+        localStorage.setItem('mv3_users', JSON.stringify(state.users));
+        localStorage.setItem('mv3_characters', JSON.stringify(state.characters));
+        localStorage.setItem('mv3_user_collections', JSON.stringify(state.userCollections));
+        localStorage.setItem('mv3_queue', JSON.stringify(state.queue));
+        localStorage.setItem('mv3_chat', JSON.stringify(state.chat));
+        localStorage.setItem('mv3_photo_chat', JSON.stringify(state.photoChat));
+        localStorage.setItem('mv3_market', JSON.stringify(state.market));
+        localStorage.setItem('mv3_tickets', JSON.stringify(state.tickets));
+        localStorage.setItem('mv3_reports', JSON.stringify(state.reports));
+      } catch (e) {}
+    }
+
+    function switchAuthTab(tab) {
+      const isLogin = tab === 'login';
+      document.getElementById('login-form').classList.toggle('hidden', !isLogin);
+      document.getElementById('register-form').classList.toggle('hidden', isLogin);
+      document.getElementById('auth-tab-login').className = isLogin
+        ? 'py-2 rounded-xl text-xs font-extrabold bg-core-600 text-white transition'
+        : 'py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white transition';
+      document.getElementById('auth-tab-register').className = !isLogin
+        ? 'py-2 rounded-xl text-xs font-extrabold bg-emerald-500 text-slate-950 transition'
+        : 'py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white transition';
+    }
+
+    function isOwner(username) {
+      return (username || '').toLowerCase() === OWNER_USERNAME;
+    }
+
+    function verifiedBadgeHTML(username) {
+      if (!isOwner(username)) return '';
+      return `<span title="Doğrulanmış Yönetici" class="inline-flex items-center justify-center w-4 h-4 rounded-full bg-yellow-400 text-white text-[10px] font-black shadow">✓</span>`;
+    }
+
+    function escapeHTML(str) {
+      return String(str || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    function showToast(msg) {
+      const box = document.getElementById('toast-box');
+      if (!box) return;
+      box.textContent = msg;
+      box.classList.remove('hidden');
+      clearTimeout(window.__toastTimer);
+      window.__toastTimer = setTimeout(() => box.classList.add('hidden'), 3000);
+    }
+
+    function openModal(id) {
+      document.getElementById(id)?.classList.remove('hidden');
+    }
+
+    function closeModal(id) {
+      document.getElementById(id)?.classList.add('hidden');
+    }
+
+    function applyLanguage() {
+      const lang = TRANSLATIONS[state.lang] ? state.lang : 'tr';
+      const dict = TRANSLATIONS[lang];
+      document.documentElement.lang = lang;
+      document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr';
+
+      const authSel = document.getElementById('lang-select-auth');
+      const appSel = document.getElementById('lang-select-app');
+      if (authSel) authSel.value = lang;
+      if (appSel) appSel.value = lang;
+
+      document.querySelectorAll('[data-i18n]').forEach(el => {
+        const key = el.getAttribute('data-i18n');
+        if (dict[key]) el.textContent = dict[key];
+      });
+      document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+        const key = el.getAttribute('data-i18n-placeholder');
+        if (dict[key]) el.setAttribute('placeholder', dict[key]);
+      });
+    }
+
+    function setLanguage(lang) {
+      if (!TRANSLATIONS[lang]) return;
+      state.lang = lang;
+      saveState();
+      applyLanguage();
+      if (state.user) {
+        renderCollection();
+        renderChat();
+        renderPhotoChat();
+        renderLeaderboard();
+        renderMarket();
+        renderTickets();
+        if (isOwner(state.user.username)) renderAdmin();
+      }
+    }
+
+    function handleLogin(event) {
+      event.preventDefault();
+      const username = document.getElementById('login-username').value.trim();
+      const password = document.getElementById('login-password').value;
+      const errEl = document.getElementById('auth-error-msg');
+
+      const found = state.users.find(
+        u => u.username.toLowerCase() === username.toLowerCase() && u.password === password
+      );
+
+      if (!found) {
+        errEl.textContent = 'Kullanıcı adı veya şifre hatalı.';
+        errEl.classList.remove('hidden');
+        return;
+      }
+
+      if (found.banned) {
+        errEl.textContent = 'Bu hesap yönetici tarafından yasaklanmıştır.';
+        errEl.classList.remove('hidden');
+        return;
+      }
+
+      errEl.classList.add('hidden');
+      state.user = { ...found };
+      saveState();
+      bootAuthenticatedApp();
+    }
+
+    function handleRegister(event) {
+      event.preventDefault();
+      const username = document.getElementById('reg-username').value.trim();
+      const displayName = document.getElementById('reg-displayname').value.trim();
+      const password = document.getElementById('reg-password').value;
+      const errEl = document.getElementById('reg-error-msg');
+
+      if (state.users.some(u => u.username.toLowerCase() === username.toLowerCase())) {
+        errEl.textContent = 'Bu kullanıcı adı zaten alınmış, lütfen başka bir kullanıcı adı seçin.';
+        errEl.classList.remove('hidden');
+        return;
+      }
+
+      const newUser = {
+        username,
+        displayName,
+        password,
+        avatar: `https://placehold.co/96x96/1e293b/38bdf8?text=${encodeURIComponent(displayName.slice(0, 2).toUpperCase())}`,
+        banned: false
+      };
+
+      state.users.push(newUser);
+      state.user = { ...newUser };
+      saveState();
+      bootAuthenticatedApp();
+    }
+
+    function handleLogout() {
+      state.user = null;
+      saveState();
+      document.getElementById('app-shell').classList.add('hidden');
+      document.getElementById('auth-screen').classList.remove('hidden');
+    }
+
+    function getUserProgress(username) {
+      const key = (username || '').toLowerCase();
+      const userCol = state.userCollections[key] || {};
+      const totalChars = state.characters.length;
+      let completedMonsunos = 0;
+      let totalRequiredSlots = 0;
+      let approvedSlots = 0;
+
+      state.characters.forEach(char => {
+        const entry = userCol[char.id] || {};
+        const reqSlots = char.noCapsule ? ['figure', 'cards'] : ['figure', 'capsule', 'cards'];
+        totalRequiredSlots += reqSlots.length;
+        let charDone = true;
+        reqSlots.forEach(s => {
+          if (entry[s]?.status === 'approved') {
+            approvedSlots += 1;
+          } else {
+            charDone = false;
+          }
+        });
+        if (charDone && reqSlots.length > 0) {
+          completedMonsunos += 1;
+        }
+      });
+
+      const percentage = totalRequiredSlots > 0 ? Math.round((approvedSlots / totalRequiredSlots) * 100) : 0;
+      return { completedMonsunos, totalChars, percentage };
+    }
+
+    function bootAuthenticatedApp() {
+      if (!state.user) return;
+      applyLanguage();
+      const latestUser = state.users.find(u => u.username.toLowerCase() === state.user.username.toLowerCase());
+      if (!latestUser || latestUser.banned) {
+        handleLogout();
+        return;
+      }
+      state.user = { ...latestUser };
+
+      document.getElementById('auth-screen').classList.add('hidden');
+      document.getElementById('app-shell').classList.remove('hidden');
+
+      document.getElementById('header-user-avatar').src = state.user.avatar || 'https://placehold.co/64x64/1e293b/f8fafc?text=U';
+      document.getElementById('header-user-label').innerHTML = `${escapeHTML(state.user.displayName)} ${verifiedBadgeHTML(state.user.username)}`;
+
+      const adminOwner = isOwner(state.user.username);
+      document.getElementById('nav-admin').classList.toggle('hidden', !adminOwner);
+      document.getElementById('owner-add-char-btn').classList.toggle('hidden', !adminOwner);
+      document.getElementById('owner-edit-char-btn').classList.toggle('hidden', !adminOwner);
+
+      updateStats();
+      switchSection(state.activeSection || 'collection');
+    }
+
+    function updateStats() {
+      if (!state.user) return;
+      const prog = getUserProgress(state.user.username);
+      document.getElementById('stat-monsuno-count').textContent = `${prog.completedMonsunos} / ${prog.totalChars}`;
+      document.getElementById('stat-completion-pct').textContent = `%${prog.percentage}`;
+      document.getElementById('header-market-count').textContent = state.market.length;
+      document.getElementById('header-pending-count').textContent = state.queue.length;
+      const myOrAllTickets = isOwner(state.user.username)
+        ? state.tickets.filter(t => t.status === 'Açık').length
+        : state.tickets.filter(t => t.username.toLowerCase() === state.user.username.toLowerCase()).length;
+      document.getElementById('header-ticket-count').textContent = myOrAllTickets;
+    }
+
+    function switchSection(sec) {
+      state.activeSection = sec;
+      const sections = ['collection', 'chat', 'photo-chat', 'leaderboard', 'market', 'tickets', 'support', 'admin'];
+      sections.forEach(s => {
+        document.getElementById(`section-${s}`)?.classList.toggle('hidden', s !== sec);
+        const btn = document.getElementById(`nav-${s}`);
+        if (!btn) return;
+        if (s === 'admin') {
+          btn.className = `${isOwner(state.user?.username) ? '' : 'hidden '}nav-btn px-3 sm:px-3.5 py-2 rounded-xl text-xs font-extrabold ${
+            sec === 'admin'
+              ? 'bg-amber-500 text-slate-950'
+              : 'bg-amber-500/15 text-amber-300 hover:bg-amber-500/25 border border-amber-500/40'
+          } transition`;
+        } else {
+          btn.className = sec === s
+            ? 'nav-btn px-3 sm:px-3.5 py-2 rounded-xl text-xs font-extrabold bg-core-600 text-white transition'
+            : 'nav-btn px-3 sm:px-3.5 py-2 rounded-xl text-xs font-semibold bg-slate-900 text-slate-300 hover:text-white border border-slate-800 transition';
+        }
+      });
+
+      if (sec === 'collection') renderCollection();
+      if (sec === 'chat') renderChat();
+      if (sec === 'photo-chat') renderPhotoChat();
+      if (sec === 'leaderboard') renderLeaderboard();
+      if (sec === 'market') renderMarket();
+      if (sec === 'tickets') renderTickets();
+      if (sec === 'admin') renderAdmin();
+    }
+
+    function setFactionFilter(faction) {
+      state.activeFactionFilter = faction;
+      document.querySelectorAll('.faction-filter-btn').forEach(btn => {
+        const f = btn.getAttribute('data-faction');
+        if (f === faction) {
+          btn.classList.add('ring-2', 'ring-white');
+        } else {
+          btn.classList.remove('ring-2', 'ring-white');
+        }
+      });
+      renderCollection();
+    }
+
+    function renderSlotHex(label, slotData, disabled = false) {
+      if (disabled) {
+        return `
+          <div class="flex flex-col items-center opacity-45">
+            <div class="w-11 h-11 hex-badge bg-slate-800 border border-slate-700 flex items-center justify-center text-[10px] font-bold text-slate-400">
+              YOK
+            </div>
+            <span class="text-[10px] font-semibold text-slate-500 mt-1">${label}</span>
+          </div>
+        `;
+      }
+      const status = slotData?.status || 'none';
+      const badgeClass = status === 'approved'
+        ? 'bg-emerald-500 text-slate-950 font-black'
+        : status === 'pending'
+          ? 'bg-amber-400 text-slate-950 font-black'
+          : 'bg-slate-800/90 text-slate-400';
+      const icon = status === 'approved' ? '✓' : status === 'pending' ? '⏳' : '';
+      return `
+        <div class="flex flex-col items-center">
+          <div class="w-11 h-11 hex-badge ${badgeClass} flex items-center justify-center text-sm shadow">
+            ${icon}
+          </div>
+          <span class="text-[10px] font-semibold text-slate-300 mt-1">${label}</span>
+        </div>
+      `;
+    }
+
+    function renderCollection() {
+      const grid = document.getElementById('collection-grid');
+      if (!grid || !state.user) return;
+      const query = (document.getElementById('collection-search')?.value || '').trim().toLowerCase();
+      const userCol = state.userCollections[state.user.username.toLowerCase()] || {};
+
+      const filtered = state.characters.filter(c => {
+        const matchFaction = state.activeFactionFilter === 'ALL' || c.faction === state.activeFactionFilter;
+        const matchQuery = !query || c.name.toLowerCase().includes(query) || c.faction.toLowerCase().includes(query);
+        return matchFaction && matchQuery;
+      });
+
+      if (!filtered.length) {
+        grid.innerHTML = `<div class="col-span-full text-center py-10 text-xs text-slate-400">${escapeHTML(t('noCharFound'))}</div>`;
+        return;
+      }
+
+      grid.innerHTML = filtered.map(char => {
+        const style = FACTION_STYLES[char.faction] || FACTION_STYLES['Core-Tech'];
+        const entry = userCol[char.id] || {};
+        return `
+          <div onclick="openVerifyModal('${char.id}')"
+            class="cursor-pointer rounded-3xl p-4 border ${style.cardBg} hover:scale-[1.01] transition shadow-xl flex flex-col items-center justify-between gap-3">
+            <div class="w-full flex items-center justify-between text-[11px]">
+              <span class="font-bold ${style.badgeText}">${escapeHTML(char.faction)}</span>
+              <span class="text-slate-400">${escapeHTML(t('verifyOrEdit'))}</span>
+            </div>
+
+            <div class="w-36 h-36 hex-main bg-slate-900/90 p-1.5 shadow-inner flex items-center justify-center">
+              <img src="${escapeHTML(char.image)}" alt="${escapeHTML(char.name)}"
+                onerror="this.src='https://placehold.co/320x320/0f172a/38bdf8?text=${encodeURIComponent(char.name)}'"
+                class="w-full h-full object-cover hex-main" />
+            </div>
+
+            <div class="w-full flex items-center justify-around pt-1">
+              ${renderSlotHex(t('slotFigure'), entry.figure, false)}
+              ${renderSlotHex(t('slotCapsule'), entry.capsule, Boolean(char.noCapsule))}
+              ${renderSlotHex(t('slotCards'), entry.cards, false)}
+            </div>
+
+            <div class="w-full rounded-xl overflow-hidden flex items-center border border-slate-700/80 bg-slate-900">
+              <div class="w-8 h-8 ${style.plateBg} flex items-center justify-center font-display font-black text-xs">
+                M
+              </div>
+              <div class="flex-1 text-center font-display font-black text-xs tracking-wider text-white py-2">
+                ${escapeHTML(char.name)}
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function openVerifyModal(charId) {
+      const char = state.characters.find(c => c.id === charId);
+      if (!char || !state.user) return;
+      document.getElementById('verify-modal-title').textContent = `${char.name} — PARÇA DOĞRULAMA`;
+      const userKey = state.user.username.toLowerCase();
+      const entry = (state.userCollections[userKey] || {})[charId] || {};
+
+      const slots = [
+        { key: 'figure', label: 'Figür' },
+        ...(char.noCapsule ? [] : [{ key: 'capsule', label: 'Capsule' }]),
+        { key: 'cards', label: 'Cards' }
+      ];
+
+      document.getElementById('verify-slots-container').innerHTML = slots.map(s => {
+        const slotData = entry[s.key] || { status: 'none' };
+        const statusText = slotData.status === 'approved'
+          ? '<span class="text-emerald-400 font-bold">Onaylı (✓)</span>'
+          : slotData.status === 'pending'
+            ? '<span class="text-amber-400 font-bold">Yönetici Onayı Bekliyor</span>'
+            : '<span class="text-slate-400">Henüz Doğrulanmadı</span>';
+
+        return `
+          <div class="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 space-y-2.5">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-extrabold text-white">${s.label}</span>
+              <span class="text-xs">${statusText}</span>
+            </div>
+            ${slotData.status === 'approved' ? `
+              <button type="button" onclick="removeOwnSlotTick('${char.id}', '${s.key}')"
+                class="w-full py-2 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/30 text-xs font-bold transition">
+                Kendi Koleksiyonumdan Tiki Kaldır
+              </button>
+            ` : `
+              <div class="flex flex-col sm:flex-row gap-2">
+                <input id="verify-file-${s.key}" type="file" accept="image/*"
+                  class="flex-1 text-xs text-slate-400" />
+                <button type="button" onclick="submitSlotVerification('${char.id}', '${s.key}', '${s.label}')"
+                  class="px-3.5 py-2 rounded-xl bg-core-600 hover:bg-core-500 text-xs font-extrabold text-white transition">
+                  Fotoğraf Gönder
+                </button>
+              </div>
+            `}
+          </div>
+        `;
+      }).join('');
+
+      openModal('verify-modal');
+    }
+
+    function submitSlotVerification(charId, slotKey, slotLabel) {
+      const char = state.characters.find(c => c.id === charId);
+      const fileInput = document.getElementById(`verify-file-${slotKey}`);
+      if (!char || !state.user || !fileInput?.files?.[0]) {
+        showToast('Lütfen doğrulama için bir fotoğraf seçin.');
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = e => {
+        const photoData = e.target.result;
+        const userKey = state.user.username.toLowerCase();
+        if (!state.userCollections[userKey]) state.userCollections[userKey] = {};
+        if (!state.userCollections[userKey][charId]) state.userCollections[userKey][charId] = {};
+
+        if (isOwner(state.user.username)) {
+          state.userCollections[userKey][charId][slotKey] = { status: 'approved', photo: photoData };
+          showToast(`${char.name} (${slotLabel}) doğrulandı!`);
+        } else {
+          state.userCollections[userKey][charId][slotKey] = { status: 'pending', photo: photoData };
+          state.queue.unshift({
+            id: 'req-' + Date.now(),
+            username: state.user.username,
+            displayName: state.user.displayName,
+            charId,
+            charName: char.name,
+            slotKey,
+            slotLabel,
+            photo: photoData
+          });
+          showToast('Fotoğraf site yöneticisine onaya gönderildi.');
+        }
+
+        saveState();
+        updateStats();
+        renderCollection();
+        openVerifyModal(charId);
+      };
+      reader.readAsDataURL(fileInput.files[0]);
+    }
+
+    function removeOwnSlotTick(charId, slotKey) {
+      if (!state.user) return;
+      const userKey = state.user.username.toLowerCase();
+      if (state.userCollections[userKey]?.[charId]) {
+        delete state.userCollections[userKey][charId][slotKey];
+      }
+      saveState();
+      updateStats();
+      renderCollection();
+      openVerifyModal(charId);
+      showToast('Parça tiki koleksiyonundan kaldırıldı.');
+    }
+
+    function handleAddCharacter(event) {
+      event.preventDefault();
+      if (!isOwner(state.user?.username)) return;
+      const name = document.getElementById('new-char-name').value.trim().toUpperCase();
+      const faction = document.getElementById('new-char-faction').value;
+      const noCapsule = document.getElementById('new-char-nocapsule').checked;
+      const fileInput = document.getElementById('new-char-file');
+
+      const finish = (imgData) => {
+        state.characters.push({
+          id: 'char-' + Date.now(),
+          name,
+          faction,
+          noCapsule,
+          image: imgData || `https://placehold.co/320x320/0f172a/38bdf8?text=${encodeURIComponent(name)}`
+        });
+        saveState();
+        updateStats();
+        renderCollection();
+        closeModal('add-char-modal');
+        event.target.reset();
+        showToast(`${name} vitrine eklendi.`);
+      };
+
+      if (fileInput.files?.[0]) {
+        const reader = new FileReader();
+        reader.onload = e => finish(e.target.result);
+        reader.readAsDataURL(fileInput.files[0]);
+      } else {
+        finish(null);
+      }
+    }
+
+    function openEditShowcaseModal() {
+      if (!isOwner(state.user?.username)) return;
+      const container = document.getElementById('edit-showcase-list');
+      container.innerHTML = state.characters.map(char => `
+        <div class="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-3">
+          <div class="flex items-center justify-between gap-2">
+            <span class="font-display font-bold text-xs text-amber-300">${escapeHTML(char.name)}</span>
+            <button type="button" onclick="deleteCharacter('${char.id}')"
+              class="px-3 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 text-xs font-bold">
+              Vitrinden Sil
+            </button>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <input id="edit-name-${char.id}" type="text" value="${escapeHTML(char.name)}"
+              class="px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs text-white" />
+            <select id="edit-faction-${char.id}" class="px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs text-white">
+              ${['Core-Tech', 'Eklipse', 'S.T.O.R.M.', 'Forge Resistance', 'Shape Shifter'].map(f =>
+                `<option value="${f}" ${char.faction === f ? 'selected' : ''}>${f}</option>`
+              ).join('')}
+            </select>
+          </div>
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <label class="flex items-center gap-2 text-xs text-slate-300">
+              <input id="edit-nocapsule-${char.id}" type="checkbox" ${char.noCapsule ? 'checked' : ''} />
+              <span>Kapsülü Üretilmedi (Yok)</span>
+            </label>
+            <input id="edit-file-${char.id}" type="file" accept="image/*" class="text-xs text-slate-400" />
+          </div>
+          <button type="button" onclick="saveCharacterEdit('${char.id}')"
+            class="w-full py-2 rounded-xl bg-core-600 hover:bg-core-500 text-xs font-extrabold text-white">
+            Değişiklikleri Kaydet
+          </button>
+        </div>
+      `).join('');
+      openModal('edit-showcase-modal');
+    }
+
+    function saveCharacterEdit(charId) {
+      const char = state.characters.find(c => c.id === charId);
+      if (!char) return;
+      char.name = document.getElementById(`edit-name-${charId}`).value.trim().toUpperCase() || char.name;
+      char.faction = document.getElementById(`edit-faction-${charId}`).value;
+      char.noCapsule = document.getElementById(`edit-nocapsule-${charId}`).checked;
+      const fileInput = document.getElementById(`edit-file-${charId}`);
+
+      const apply = () => {
+        saveState();
+        updateStats();
+        renderCollection();
+        showToast(`${char.name} güncellendi.`);
+      };
+
+      if (fileInput?.files?.[0]) {
+        const reader = new FileReader();
+        reader.onload = e => {
+          char.image = e.target.result;
+          apply();
+        };
+        reader.readAsDataURL(fileInput.files[0]);
+      } else {
+        apply();
+      }
+    }
+
+    function deleteCharacter(charId) {
+      state.characters = state.characters.filter(c => c.id !== charId);
+      saveState();
+      updateStats();
+      renderCollection();
+      openEditShowcaseModal();
+      showToast('Karakter vitrinden silindi.');
+    }
+
+    function openProfileModal() {
+      if (!state.user) return;
+      state.pendingProfileAvatar = null;
+      document.getElementById('profile-preview-avatar').src = state.user.avatar || 'https://placehold.co/96x96/1e293b/38bdf8?text=U';
+      document.getElementById('profile-displayname-input').value = state.user.displayName;
+      openModal('profile-modal');
+    }
+
+    function handleProfilePhotoChange(event) {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = e => {
+        state.pendingProfileAvatar = e.target.result;
+        document.getElementById('profile-preview-avatar').src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function handleSaveProfile(event) {
+      event.preventDefault();
+      if (!state.user) return;
+      const newDisplayName = document.getElementById('profile-displayname-input').value.trim();
+      const target = state.users.find(u => u.username.toLowerCase() === state.user.username.toLowerCase());
+      if (target) {
+        target.displayName = newDisplayName || target.displayName;
+        if (state.pendingProfileAvatar) {
+          target.avatar = state.pendingProfileAvatar;
+        }
+        state.user = { ...target };
+      }
+      saveState();
+      bootAuthenticatedApp();
+      closeModal('profile-modal');
+      showToast('Profil bilgilerin güncellendi.');
+    }
+
+    function renderChat() {
+      const container = document.getElementById('chat-messages');
+      if (!container) return;
+      if (!state.chat.length) {
+        container.innerHTML = `<div class="text-center text-xs text-slate-500 py-10">${escapeHTML(t('noChatMsg'))}</div>`;
+        return;
+      }
+      const adminOwner = isOwner(state.user?.username);
+      const lang = TRANSLATIONS[state.lang] ? state.lang : 'tr';
+      container.innerHTML = state.chat.map(msg => {
+        const sender = state.users.find(u => u.username.toLowerCase() === msg.username.toLowerCase());
+        const displayName = sender?.displayName || msg.displayName;
+        const avatar = sender?.avatar || 'https://placehold.co/64x64/1e293b/38bdf8?text=U';
+        const trEntry = state.translationsCache[`${lang}::chat-${msg.id}`];
+        return `
+          <div class="flex items-start justify-between gap-3 p-3 rounded-2xl bg-slate-900/80 border border-slate-800">
+            <div class="flex items-start gap-3 flex-1 min-w-0">
+              <img src="${escapeHTML(avatar)}" alt="PP" onclick="openUserInspectModal('${escapeHTML(msg.username)}')"
+                class="w-9 h-9 rounded-full object-cover cursor-pointer border border-slate-700 shrink-0" />
+              <div class="flex-1 min-w-0">
+                <div class="flex flex-wrap items-center gap-1.5">
+                  <button type="button" onclick="openUserInspectModal('${escapeHTML(msg.username)}')"
+                    class="text-xs font-extrabold text-core-400 hover:underline flex items-center gap-1">
+                    ${escapeHTML(displayName)} ${verifiedBadgeHTML(msg.username)}
+                  </button>
+                  <span class="text-[10px] text-slate-500">@${escapeHTML(msg.username)} • ${escapeHTML(msg.time)}</span>
+                </div>
+                <p class="text-xs sm:text-sm text-slate-200 mt-1 break-words">${escapeHTML(msg.text)}</p>
+                ${trEntry ? `
+                  <div class="mt-1.5 px-2.5 py-1.5 rounded-xl bg-core-500/10 border border-core-500/30 text-xs text-core-300">
+                    <span class="font-bold text-[10px] uppercase mr-1">[${escapeHTML(t('translatedBadge'))}]</span>
+                    ${trEntry.loading ? escapeHTML(t('translatingText')) : escapeHTML(trEntry.text)}
+                  </div>
+                ` : ''}
+              </div>
+            </div>
+            <div class="flex items-center gap-1.5 shrink-0">
+              <button type="button" onclick="translateDynamicText('chat-${msg.id}', ${JSON.stringify(msg.text)})"
+                class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-core-300 text-[11px] font-bold transition">
+                🌐 ${escapeHTML(t('translateBtn'))}
+              </button>
+              <button type="button" onclick="reportContent('chat', '${msg.id}', ${JSON.stringify(`${msg.displayName} (@${msg.username}): ${msg.text}`)})"
+                class="px-2.5 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 text-[11px] font-bold transition">
+                🚩 ${escapeHTML(t('reportBtn'))}
+              </button>
+              ${adminOwner ? `
+                <button type="button" onclick="deleteChatMessage('${msg.id}')"
+                  class="px-2.5 py-1 rounded-lg bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 text-[11px] font-bold">
+                  ${escapeHTML(t('deleteBtn'))}
+                </button>
+              ` : ''}
+            </div>
+          </div>
+        `;
+      }).join('');
+      container.scrollTop = container.scrollHeight;
+    }
+
+    function handleSendChat(event) {
+      event.preventDefault();
+      if (!state.user) return;
+      const input = document.getElementById('chat-input');
+      const text = input.value.trim();
+      if (!text) return;
+      state.chat.push({
+        id: 'msg-' + Date.now(),
+        username: state.user.username,
+        displayName: state.user.displayName,
+        text,
+        time: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
+      });
+      input.value = '';
+      saveState();
+      renderChat();
+    }
+
+    function deleteChatMessage(id) {
+      if (!isOwner(state.user?.username)) return;
+      state.chat = state.chat.filter(m => m.id !== id);
+      saveState();
+      renderChat();
+    }
+
+    function renderPhotoChat() {
+      const grid = document.getElementById('photo-chat-grid');
+      if (!grid) return;
+      if (!state.photoChat.length) {
+        grid.innerHTML = `<div class="col-span-full text-center text-xs text-slate-500 py-10">${escapeHTML(t('noPhotoMsg'))}</div>`;
+        return;
+      }
+      const adminOwner = isOwner(state.user?.username);
+      const lang = TRANSLATIONS[state.lang] ? state.lang : 'tr';
+      grid.innerHTML = state.photoChat.map(item => {
+        const captionText = item.caption || 'Monsuno';
+        const trEntry = state.translationsCache[`${lang}::pchat-${item.id}`];
+        return `
+          <div class="glass-panel rounded-3xl overflow-hidden border border-slate-800 flex flex-col">
+            <img src="${escapeHTML(item.photo)}" alt="Paylaşım" class="w-full h-52 object-cover bg-slate-950" />
+            <div class="p-4 flex-1 flex flex-col justify-between gap-2">
+              <div>
+                <button type="button" onclick="openUserInspectModal('${escapeHTML(item.username)}')"
+                  class="text-xs font-extrabold text-core-400 hover:underline flex items-center gap-1">
+                  ${escapeHTML(item.displayName)} ${verifiedBadgeHTML(item.username)}
+                </button>
+                <p class="text-xs text-slate-300 mt-1">${escapeHTML(captionText)}</p>
+                ${trEntry ? `
+                  <div class="mt-1.5 px-2.5 py-1.5 rounded-xl bg-core-500/10 border border-core-500/30 text-xs text-core-300">
+                    ${trEntry.loading ? escapeHTML(t('translatingText')) : escapeHTML(trEntry.text)}
+                  </div>
+                ` : ''}
+              </div>
+              <div class="flex items-center justify-end gap-1.5 pt-2">
+                ${item.caption ? `
+                  <button type="button" onclick="translateDynamicText('pchat-${item.id}', ${JSON.stringify(item.caption)})"
+                    class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-core-300 text-xs font-bold">
+                    🌐 ${escapeHTML(t('translateBtn'))}
+                  </button>
+                ` : ''}
+                <button type="button" onclick="reportContent('photo-chat', '${item.id}', ${JSON.stringify(`${item.displayName} (@${item.username}): ${captionText}`)})"
+                  class="px-2.5 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 text-xs font-bold">
+                  🚩 ${escapeHTML(t('reportBtn'))}
+                </button>
+                ${adminOwner ? `
+                  <button type="button" onclick="deletePhotoChatItem('${item.id}')"
+                    class="px-3 py-1 rounded-lg bg-rose-500/20 text-rose-300 text-xs font-bold">
+                    ${escapeHTML(t('deleteBtn'))}
+                  </button>
+                ` : ''}
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function handleSendPhotoChat(event) {
+      event.preventDefault();
+      if (!state.user) return;
+      const fileInput = document.getElementById('photo-chat-file');
+      const caption = document.getElementById('photo-chat-caption').value.trim();
+      if (!fileInput?.files?.[0]) return;
+      const reader = new FileReader();
+      reader.onload = e => {
+        state.photoChat.unshift({
+          id: 'pchat-' + Date.now(),
+          username: state.user.username,
+          displayName: state.user.displayName,
+          photo: e.target.result,
+          caption
+        });
+        event.target.reset();
+        saveState();
+        renderPhotoChat();
+        showToast('Fotoğraf paylaşıldı!');
+      };
+      reader.readAsDataURL(fileInput.files[0]);
+    }
+
+    function deletePhotoChatItem(id) {
+      if (!isOwner(state.user?.username)) return;
+      state.photoChat = state.photoChat.filter(p => p.id !== id);
+      saveState();
+      renderPhotoChat();
+    }
+
+    function renderLeaderboard() {
+      const container = document.getElementById('leaderboard-list');
+      if (!container) return;
+      const ranked = state.users
+        .filter(u => !u.banned)
+        .map(u => ({ ...u, prog: getUserProgress(u.username) }))
+        .sort((a, b) => b.prog.completedMonsunos - a.prog.completedMonsunos || b.prog.percentage - a.prog.percentage);
+
+      container.innerHTML = ranked.map((u, idx) => `
+        <div onclick="openUserInspectModal('${escapeHTML(u.username)}')"
+          class="cursor-pointer p-3.5 rounded-2xl bg-slate-950 hover:bg-slate-900 border border-slate-800 flex items-center justify-between gap-3 transition">
+          <div class="flex items-center gap-3">
+            <span class="w-7 h-7 rounded-xl bg-slate-800 flex items-center justify-center font-display font-black text-xs text-amber-400">
+              #${idx + 1}
+            </span>
+            <img src="${escapeHTML(u.avatar)}" alt="PP" class="w-9 h-9 rounded-full object-cover border border-slate-700" />
+            <div>
+              <div class="text-xs font-extrabold text-white flex items-center gap-1">
+                ${escapeHTML(u.displayName)} ${verifiedBadgeHTML(u.username)}
+              </div>
+              <div class="text-[11px] text-slate-400">@${escapeHTML(u.username)}</div>
+            </div>
+          </div>
+          <div class="text-right">
+            <div class="text-xs font-extrabold text-emerald-400">${u.prog.completedMonsunos} Monsuno</div>
+            <div class="text-[11px] text-slate-400">%${u.prog.percentage} ${escapeHTML(t('completedSuffix'))}</div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function setMarketFilter(filter) {
+      state.activeMarketFilter = filter;
+      ['all', 'wanted', 'mine'].forEach(f => {
+        const btn = document.getElementById(`market-tab-${f}`);
+        if (!btn) return;
+        btn.className = f === filter
+          ? 'px-3.5 py-2 rounded-xl text-xs font-extrabold bg-core-600 text-white transition'
+          : 'px-3.5 py-2 rounded-xl text-xs font-semibold bg-slate-900 text-slate-300 hover:text-white border border-slate-800 transition';
+      });
+      renderMarket();
+    }
+
+    function renderMarket() {
+      const grid = document.getElementById('market-grid');
+      if (!grid || !state.user) return;
+      let list = state.market;
+      if (state.activeMarketFilter === 'wanted') {
+        list = list.filter(item => item.type === 'Aranıyor');
+      } else if (state.activeMarketFilter === 'mine') {
+        list = list.filter(item => item.ownerUsername.toLowerCase() === state.user.username.toLowerCase());
+      }
+
+      if (!list.length) {
+        grid.innerHTML = `<div class="col-span-full text-center text-xs text-slate-500 py-10">${escapeHTML(t('noMarketMsg'))}</div>`;
+        return;
+      }
+
+      const lang = TRANSLATIONS[state.lang] ? state.lang : 'tr';
+      grid.innerHTML = list.map(item => {
+        const canDelete = isOwner(state.user.username) || item.ownerUsername.toLowerCase() === state.user.username.toLowerCase();
+        const typeLabel = item.type === 'Aranıyor' ? t('typeWanted') : item.type === 'Satılık' ? t('typeSale') : t('typeTrade');
+        const badgeColor = item.type === 'Aranıyor'
+          ? 'bg-purple-500/20 text-purple-300 border-purple-500/40'
+          : item.type === 'Satılık'
+            ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+            : 'bg-amber-500/20 text-amber-300 border-amber-500/40';
+        const trEntry = state.translationsCache[`${lang}::lst-${item.id}`];
+        const fullListingText = `${item.title}${item.desc ? ' — ' + item.desc : ''}`;
+        return `
+          <div class="glass-panel rounded-3xl overflow-hidden border border-slate-800 flex flex-col">
+            <img src="${escapeHTML(item.photo)}" alt="${escapeHTML(item.title)}" class="w-full h-48 object-cover bg-slate-950" />
+            <div class="p-4 flex-1 flex flex-col justify-between gap-3">
+              <div>
+                <div class="flex items-center justify-between gap-2">
+                  <span class="px-2.5 py-1 rounded-lg border text-[11px] font-extrabold ${badgeColor}">${escapeHTML(typeLabel)}</span>
+                  <span class="text-xs font-extrabold text-white">${escapeHTML(item.price)}</span>
+                </div>
+                <h3 class="font-bold text-sm text-white mt-2">${escapeHTML(item.title)}</h3>
+                <p class="text-xs text-slate-400 mt-1">${escapeHTML(item.desc || '')}</p>
+                ${trEntry ? `
+                  <div class="mt-2 px-2.5 py-1.5 rounded-xl bg-core-500/10 border border-core-500/30 text-xs text-core-300">
+                    ${trEntry.loading ? escapeHTML(t('translatingText')) : escapeHTML(trEntry.text)}
+                  </div>
+                ` : ''}
+              </div>
+              <div class="pt-3 border-t border-slate-800 flex items-center justify-between gap-2">
+                <button type="button" onclick="openUserInspectModal('${escapeHTML(item.ownerUsername)}')"
+                  class="text-xs font-bold text-core-400 hover:underline flex items-center gap-1">
+                  ${escapeHTML(item.ownerDisplayName)} ${verifiedBadgeHTML(item.ownerUsername)}
+                </button>
+                <div class="flex items-center gap-1.5">
+                  <button type="button" onclick="translateDynamicText('lst-${item.id}', ${JSON.stringify(fullListingText)})"
+                    class="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-core-300 text-xs font-bold">
+                    🌐 ${escapeHTML(t('translateBtn'))}
+                  </button>
+                  <button type="button" onclick="reportContent('market', '${item.id}', ${JSON.stringify(`${item.title} (${item.ownerDisplayName})`)})"
+                    class="px-2.5 py-1.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 text-xs font-bold">
+                    🚩 ${escapeHTML(t('reportBtn'))}
+                  </button>
+                  ${item.link ? `<a href="${escapeHTML(item.link)}" target="_blank" rel="noopener noreferrer" class="px-3 py-1.5 rounded-xl bg-core-600 text-xs font-bold text-white">Link</a>` : ''}
+                  ${canDelete ? `<button type="button" onclick="deleteListing('${item.id}')" class="px-3 py-1.5 rounded-xl bg-rose-500/20 text-rose-300 text-xs font-bold">${escapeHTML(t('deleteBtn'))}</button>` : ''}
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function renderTickets() {
+      const container = document.getElementById('tickets-list');
+      if (!container || !state.user) return;
+      const mine = state.tickets.filter(t => t.username.toLowerCase() === state.user.username.toLowerCase());
+      if (!mine.length) {
+        container.innerHTML = `<div class="text-xs text-slate-500 py-4">Henüz oluşturulmuş bir ticket talebin yok.</div>`;
+        return;
+      }
+      container.innerHTML = mine.map(t => `
+        <div class="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 flex items-center justify-between gap-3">
+          <div>
+            <div class="text-xs font-extrabold text-white">${escapeHTML(t.type)}</div>
+            <div class="text-xs text-slate-400 mt-0.5">${escapeHTML(t.detail)}</div>
+          </div>
+          <span class="px-2.5 py-1 rounded-lg text-[11px] font-bold ${t.status === 'Açık' ? 'bg-amber-500/20 text-amber-300' : 'bg-emerald-500/20 text-emerald-300'}">
+            ${escapeHTML(t.status)}
+          </span>
+        </div>
+      `).join('');
+    }
+
+    function handleCreateListing(event) {
+      event.preventDefault();
+      if (!state.user) return;
+      const title = document.getElementById('listing-title').value.trim();
+      const type = document.getElementById('listing-type').value;
+      const currency = document.getElementById('listing-currency').value;
+      const rawPrice = document.getElementById('listing-price').value.trim();
+      const link = document.getElementById('listing-link').value.trim();
+      const desc = document.getElementById('listing-desc').value.trim();
+      const photoInput = document.getElementById('listing-photo');
+      const sym = CURRENCY_SYMBOLS[currency] || '₺';
+      const formattedPrice = rawPrice ? `${rawPrice} ${sym}` : '';
+
+      const saveListing = (photoData) => {
+        state.market.unshift({
+          id: 'lst-' + Date.now(),
+          ownerUsername: state.user.username,
+          ownerDisplayName: state.user.displayName,
+          title,
+          type,
+          price: formattedPrice,
+          link,
+          desc,
+          photo: photoData || `https://placehold.co/480x320/0f172a/38bdf8?text=${encodeURIComponent(title)}`
+        });
+        saveState();
+        updateStats();
+        renderMarket();
+        closeModal('create-listing-modal');
+        event.target.reset();
+        showToast('İlan yayınlandı.');
+      };
+
+      if (photoInput?.files?.[0]) {
+        const reader = new FileReader();
+        reader.onload = e => saveListing(e.target.result);
+        reader.readAsDataURL(photoInput.files[0]);
+      } else {
+        saveListing(null);
+      }
+    }
+
+    function deleteListing(id) {
+      const item = state.market.find(l => l.id === id);
+      if (!item || !state.user) return;
+      if (!isOwner(state.user.username) && item.ownerUsername.toLowerCase() !== state.user.username.toLowerCase()) return;
+      state.market = state.market.filter(l => l.id !== id);
+      saveState();
+      updateStats();
+      renderMarket();
+      showToast('İlan silindi.');
+    }
+
+    function handleCreateTicket(event) {
+      event.preventDefault();
+      if (!state.user) return;
+      const type = document.getElementById('ticket-type').value;
+      const detail = document.getElementById('ticket-detail').value.trim();
+      if (!detail) return;
+      state.tickets.unshift({
+        id: 'tkt-' + Date.now(),
+        username: state.user.username,
+        displayName: state.user.displayName,
+        type,
+        detail,
+        status: 'Açık'
+      });
+      event.target.reset();
+      saveState();
+      updateStats();
+      renderTickets();
+      showToast('Ticket talebin yöneticiye iletildi.');
+    }
+
+    function renderAdmin() {
+      if (!isOwner(state.user?.username)) return;
+
+      const queueGrid = document.getElementById('admin-queue-grid');
+      if (queueGrid) {
+        if (!state.queue.length) {
+          queueGrid.innerHTML = `<div class="col-span-full text-xs text-slate-500 py-4">Bekleyen fotoğraf onayı yok.</div>`;
+        } else {
+          queueGrid.innerHTML = state.queue.map(req => `
+            <div class="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-3">
+              <img src="${escapeHTML(req.photo)}" alt="${escapeHTML(req.charName)}" class="w-full h-40 object-cover rounded-xl bg-slate-900" />
+              <div>
+                <div class="text-xs font-extrabold text-white">${escapeHTML(req.charName)} — ${escapeHTML(req.slotLabel)}</div>
+                <div class="text-[11px] text-slate-400">Gönderen: ${escapeHTML(req.displayName)} (@${escapeHTML(req.username)})</div>
+              </div>
+              <div class="grid grid-cols-2 gap-2">
+                <button type="button" onclick="approveQueueItem('${req.id}')"
+                  class="py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-xs font-extrabold text-slate-950">
+                  ✓ Onayla
+                </button>
+                <button type="button" onclick="rejectQueueItem('${req.id}')"
+                  class="py-2 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 text-xs font-bold">
+                  ✕ Reddet
+                </button>
+              </div>
+            </div>
+          `).join('');
+        }
+      }
+
+      const usersList = document.getElementById('admin-users-list');
+      if (usersList) {
+        usersList.innerHTML = state.users.map(u => {
+          const prog = getUserProgress(u.username);
+          const ownerAcc = isOwner(u.username);
+          return `
+            <div class="p-3.5 rounded-2xl bg-slate-950 border ${u.banned ? 'border-rose-500/40' : 'border-slate-800'} flex items-center justify-between gap-3">
+              <div onclick="openUserInspectModal('${escapeHTML(u.username)}')" class="flex items-center gap-3 cursor-pointer flex-1 min-w-0">
+                <img src="${escapeHTML(u.avatar)}" alt="PP" class="w-9 h-9 rounded-full object-cover border border-slate-700 shrink-0" />
+                <div class="min-w-0">
+                  <div class="text-xs font-extrabold text-white flex items-center gap-1 truncate">
+                    ${escapeHTML(u.displayName)} ${verifiedBadgeHTML(u.username)}
+                    ${u.banned ? '<span class="px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-300 text-[10px]">BANLI</span>' : ''}
+                  </div>
+                  <div class="text-[11px] text-slate-400 truncate">@${escapeHTML(u.username)} • ${prog.completedMonsunos} Monsuno (%${prog.percentage})</div>
+                </div>
+              </div>
+              ${!ownerAcc ? `
+                <button type="button" onclick="toggleUserBan('${escapeHTML(u.username)}')"
+                  class="px-3 py-1.5 rounded-xl text-xs font-bold ${u.banned ? 'bg-emerald-500/20 text-emerald-300' : 'bg-rose-500/20 text-rose-300'}">
+                  ${u.banned ? 'Ban Kaldır' : 'Banla'}
+                </button>
+              ` : ''}
+            </div>
+          `;
+        }).join('');
+      }
+
+      const adminTickets = document.getElementById('admin-tickets-list');
+      if (adminTickets) {
+        if (!state.tickets.length) {
+          adminTickets.innerHTML = `<div class="text-xs text-slate-500 py-3">Gelen ticket yok.</div>`;
+        } else {
+          adminTickets.innerHTML = state.tickets.map(tkt => `
+            <div class="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 flex items-center justify-between gap-3">
+              <div>
+                <div class="text-xs font-extrabold text-white">${escapeHTML(tkt.type)} — ${escapeHTML(tkt.displayName)} (@${escapeHTML(tkt.username)})</div>
+                <div class="text-xs text-slate-400 mt-0.5">${escapeHTML(tkt.detail)}</div>
+              </div>
+              ${tkt.status === 'Açık' ? `
+                <button type="button" onclick="closeTicket('${tkt.id}')"
+                  class="px-3 py-1.5 rounded-xl bg-emerald-500 text-xs font-extrabold text-slate-950">
+                  Çözüldü İşaretle
+                </button>
+              ` : `<span class="text-xs font-bold text-emerald-400">Çözüldü</span>`}
+            </div>
+          `).join('');
+        }
+      }
+
+      const adminSection = document.getElementById('section-admin');
+      if (adminSection) {
+        let reportsBox = document.getElementById('admin-reports-panel');
+        if (!reportsBox) {
+          reportsBox = document.createElement('div');
+          reportsBox.id = 'admin-reports-panel';
+          reportsBox.className = 'glass-panel rounded-3xl p-4 sm:p-6 border border-rose-500/30 space-y-4';
+          adminSection.appendChild(reportsBox);
+        }
+
+        const openReports = state.reports.filter(r => r.status === 'Açık');
+        reportsBox.innerHTML = `
+          <div>
+            <h2 class="font-display font-extrabold text-lg text-rose-300">${escapeHTML(t('reportsAdminTitle'))} (${openReports.length})</h2>
+            <p class="text-xs text-slate-400">${escapeHTML(t('reportsAdminSubtitle'))}</p>
+          </div>
+          ${!openReports.length
+            ? `<div class="text-xs text-slate-500 py-3">${escapeHTML(t('noReportMsg'))}</div>`
+            : `<div class="space-y-2.5">${openReports.map(rep => `
+                <div class="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div class="space-y-1">
+                    <div class="text-xs font-extrabold text-white">
+                      [${escapeHTML(rep.targetType)}] ${escapeHTML(rep.summary)}
+                    </div>
+                    <div class="text-[11px] text-slate-400">
+                      Raporlayan: ${escapeHTML(rep.reporterDisplayName)} (@${escapeHTML(rep.reporterUsername)}) • ${escapeHTML(rep.time)}
+                    </div>
+                  </div>
+                  <div class="flex items-center gap-2 shrink-0">
+                    <button type="button" onclick="deleteReportedContent('${rep.id}')"
+                      class="px-3 py-1.5 rounded-xl bg-rose-500 hover:bg-rose-400 text-xs font-extrabold text-white">
+                      ${escapeHTML(t('deleteReportedContentBtn'))}
+                    </button>
+                    <button type="button" onclick="dismissReport('${rep.id}')"
+                      class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-200">
+                      ${escapeHTML(t('dismissReportBtn'))}
+                    </button>
+                  </div>
+                </div>
+              `).join('')}</div>`
+          }
+        `;
+      }
+    }
+
+    function reportContent(targetType, targetId, summary) {
+      if (!state.user) return;
+      state.reports.unshift({
+        id: 'rep-' + Date.now(),
+        targetType,
+        targetId,
+        summary,
+        reporterUsername: state.user.username,
+        reporterDisplayName: state.user.displayName,
+        status: 'Açık',
+        time: new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
+      });
+      saveState();
+      showToast(t('reportSentToast'));
+    }
+
+    function dismissReport(repId) {
+      if (!isOwner(state.user?.username)) return;
+      const rep = state.reports.find(r => r.id === repId);
+      if (!rep) return;
+      rep.status = 'Kapatıldı';
+      saveState();
+      renderAdmin();
+    }
+
+    function deleteReportedContent(repId) {
+      if (!isOwner(state.user?.username)) return;
+      const rep = state.reports.find(r => r.id === repId);
+      if (!rep) return;
+
+      if (rep.targetType === 'chat') {
+        state.chat = state.chat.filter(m => m.id !== rep.targetId);
+      } else if (rep.targetType === 'photo-chat') {
+        state.photoChat = state.photoChat.filter(p => p.id !== rep.targetId);
+      } else if (rep.targetType === 'market') {
+        state.market = state.market.filter(l => l.id !== rep.targetId);
+      }
+
+      rep.status = 'Silindi';
+      saveState();
+      updateStats();
+      renderAdmin();
+      showToast('Raporlanan içerik silindi.');
+    }
+
+    function approveQueueItem(reqId) {
+      const req = state.queue.find(r => r.id === reqId);
+      if (!req) return;
+      const userKey = req.username.toLowerCase();
+      if (!state.userCollections[userKey]) state.userCollections[userKey] = {};
+      if (!state.userCollections[userKey][req.charId]) state.userCollections[userKey][req.charId] = {};
+      state.userCollections[userKey][req.charId][req.slotKey] = {
+        status: 'approved',
+        photo: req.photo
+      };
+      state.queue = state.queue.filter(r => r.id !== reqId);
+      saveState();
+      updateStats();
+      renderAdmin();
+      showToast('Onay verildi ve kullanıcının tik kutusu güncellendi.');
+    }
+
+    function rejectQueueItem(reqId) {
+      const req = state.queue.find(r => r.id === reqId);
+      if (!req) return;
+      const userKey = req.username.toLowerCase();
+      if (state.userCollections[userKey]?.[req.charId]) {
+        delete state.userCollections[userKey][req.charId][req.slotKey];
+      }
+      state.queue = state.queue.filter(r => r.id !== reqId);
+      saveState();
+      updateStats();
+      renderAdmin();
+      showToast('Talep reddedildi.');
+    }
+
+    function toggleUserBan(username) {
+      if (!isOwner(state.user?.username)) return;
+      const target = state.users.find(u => u.username.toLowerCase() === username.toLowerCase());
+      if (!target || isOwner(target.username)) return;
+      target.banned = !target.banned;
+      saveState();
+      renderAdmin();
+      showToast(target.banned ? `${target.displayName} banlandı.` : `${target.displayName} banı kaldırıldı.`);
+    }
+
+    function closeTicket(id) {
+      const t = state.tickets.find(item => item.id === id);
+      if (!t) return;
+      t.status = 'Çözüldü';
+      saveState();
+      updateStats();
+      renderAdmin();
+    }
+
+    function openUserInspectModal(username) {
+      const target = state.users.find(u => u.username.toLowerCase() === username.toLowerCase());
+      if (!target) return;
+      const prog = getUserProgress(target.username);
+      const userCol = state.userCollections[target.username.toLowerCase()] || {};
+      const adminOwner = isOwner(state.user?.username);
+
+      document.getElementById('inspect-modal-header').innerHTML = `
+        <img src="${escapeHTML(target.avatar)}" alt="PP" class="w-11 h-11 rounded-full object-cover border border-slate-700" />
+        <div>
+          <div class="text-sm font-extrabold text-white flex items-center gap-1">
+            ${escapeHTML(target.displayName)} ${verifiedBadgeHTML(target.username)}
+          </div>
+          <div class="text-xs text-slate-400">@${escapeHTML(target.username)} • <strong class="text-emerald-400">${prog.completedMonsunos} Monsuno</strong> (%${prog.percentage})</div>
+        </div>
+      `;
+
+      let adminCredsHTML = '';
+      if (adminOwner) {
+        adminCredsHTML = `
+          <form onsubmit="adminUpdateUserCreds(event, '${escapeHTML(target.username)}')" class="p-4 rounded-2xl bg-slate-950 border border-amber-500/30 space-y-3">
+            <div class="text-xs font-extrabold text-amber-300">Yönetici Hesap Düzenleme (Kullanıcı Adı &amp; Şifre)</div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <input id="admin-edit-uname" type="text" value="${escapeHTML(target.username)}" required
+                class="px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs text-white" />
+              <input id="admin-edit-upass" type="text" value="${escapeHTML(target.password)}" required
+                class="px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs text-white" />
+            </div>
+            <button type="submit" class="px-4 py-2 rounded-xl bg-amber-500 text-xs font-extrabold text-slate-950">
+              Kullanıcı Bilgilerini Güncelle
+            </button>
+          </form>
+        `;
+      }
+
+      const charsHTML = state.characters.map(char => {
+        const entry = userCol[char.id] || {};
+        const slots = [
+          { key: 'figure', label: 'Figür' },
+          ...(char.noCapsule ? [] : [{ key: 'capsule', label: 'Capsule' }]),
+          { key: 'cards', label: 'Cards' }
+        ];
+        return `
+          <div class="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <div class="text-xs font-extrabold text-white">${escapeHTML(char.name)}</div>
+              <div class="text-[11px] text-slate-400">${escapeHTML(char.faction)}</div>
+            </div>
+            <div class="flex flex-wrap items-center gap-2">
+              ${slots.map(s => {
+                const approved = entry[s.key]?.status === 'approved';
+                return `
+                  <div class="flex items-center gap-1 px-2.5 py-1 rounded-xl ${approved ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' : 'bg-slate-900 text-slate-500 border border-slate-800'} text-xs font-bold">
+                    <span>${s.label}: ${approved ? '✓' : '—'}</span>
+                    ${adminOwner && approved ? `
+                      <button type="button" onclick="adminRevokeTick('${escapeHTML(target.username)}', '${char.id}', '${s.key}')"
+                        class="ml-1 text-rose-400 hover:text-rose-300 font-black">✕</button>
+                    ` : ''}
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      document.getElementById('inspect-modal-body').innerHTML = `${adminCredsHTML}<div class="space-y-2.5">${charsHTML}</div>`;
+      openModal('user-inspect-modal');
+    }
+
+    function adminRevokeTick(username, charId, slotKey) {
+      if (!isOwner(state.user?.username)) return;
+      const userKey = username.toLowerCase();
+      if (state.userCollections[userKey]?.[charId]) {
+        delete state.userCollections[userKey][charId][slotKey];
+      }
+      saveState();
+      updateStats();
+      renderCollection();
+      renderAdmin();
+      openUserInspectModal(username);
+      showToast('Onay tiki kaldırıldı ve istatistikler güncellendi.');
+    }
+
+    function adminUpdateUserCreds(event, oldUsername) {
+      event.preventDefault();
+      if (!isOwner(state.user?.username)) return;
+      const newUsername = document.getElementById('admin-edit-uname').value.trim();
+      const newPassword = document.getElementById('admin-edit-upass').value.trim();
+      const target = state.users.find(u => u.username.toLowerCase() === oldUsername.toLowerCase());
+      if (!target) return;
+
+      if (
+        newUsername.toLowerCase() !== oldUsername.toLowerCase() &&
+        state.users.some(u => u.username.toLowerCase() === newUsername.toLowerCase())
+      ) {
+        showToast('Bu kullanıcı adı başka bir üyede kayıtlı.');
+        return;
+      }
+
+      if (newUsername.toLowerCase() !== oldUsername.toLowerCase()) {
+        state.userCollections[newUsername.toLowerCase()] = state.userCollections[oldUsername.toLowerCase()] || {};
+        delete state.userCollections[oldUsername.toLowerCase()];
+      }
+      target.username = newUsername;
+      target.password = newPassword;
+      if (state.user.username.toLowerCase() === oldUsername.toLowerCase()) {
+        state.user = { ...target };
+      }
+      saveState();
+      renderAdmin();
+      openUserInspectModal(newUsername);
+      showToast('Kullanıcı adı ve şifre güncellendi.');
+    }
+
+    applyLanguage();
+    if (state.user) {
+      bootAuthenticatedApp();
+    }
+  </script>
+</body>
+</html>
