@@ -323,6 +323,20 @@
               </div>
             </div>
           </div>
+
+          <!-- Koleksiyonum Arama ve Durum Filtreleri -->
+          <div class="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 pt-2 border-t border-slate-800/80">
+            <input id="ticked-search" type="text" oninput="renderTickedSection()" placeholder="Koleksiyonumda ara (örn: LOCK)..."
+              class="w-full md:w-72 px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-core-400" />
+            <div class="flex flex-wrap items-center gap-1.5">
+              <button id="ticked-filter-all" type="button" onclick="setTickedFilter('all')"
+                class="px-3 py-1.5 rounded-xl text-xs font-extrabold bg-core-600 text-white transition">Tümü</button>
+              <button id="ticked-filter-full" type="button" onclick="setTickedFilter('full')"
+                class="px-3 py-1.5 rounded-xl text-xs font-semibold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 transition">Tamamlanan (3/3)</button>
+              <button id="ticked-filter-partial" type="button" onclick="setTickedFilter('partial')"
+                class="px-3 py-1.5 rounded-xl text-xs font-semibold bg-amber-500/15 text-amber-300 border border-amber-500/30 transition">Kısmi Onaylı</button>
+            </div>
+          </div>
         </div>
 
         <div id="ticked-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5"></div>
@@ -1699,6 +1713,7 @@
       reports: loadJSON('mv3_reports', []),
       activeSection: loadJSON('mv3_active_section', 'collection'),
       activeFactionFilter: loadJSON('mv3_faction_filter', 'ALL'),
+      activeTickedFilter: loadJSON('mv3_ticked_filter', 'all'),
       activeMarketFilter: loadJSON('mv3_market_filter', 'all'),
       pendingProfileAvatar: null,
       translationsCache: {},
@@ -2560,6 +2575,7 @@
         localStorage.setItem('mv3_reports', JSON.stringify(state.reports));
         localStorage.setItem('mv3_active_section', JSON.stringify(state.activeSection));
         localStorage.setItem('mv3_faction_filter', JSON.stringify(state.activeFactionFilter));
+        localStorage.setItem('mv3_ticked_filter', JSON.stringify(state.activeTickedFilter));
         localStorage.setItem('mv3_market_filter', JSON.stringify(state.activeMarketFilter));
       } catch (e) {
         try {
@@ -2945,10 +2961,30 @@
     }
 
     // Sadece en az 1 onaylı tiki bulunan karakterleri ve tamamlanan Monsuno'ları listeler
+    function setTickedFilter(filter) {
+      state.activeTickedFilter = ['all', 'full', 'partial'].includes(filter) ? filter : 'all';
+      saveState(false);
+      ['all', 'full', 'partial'].forEach(f => {
+        const btn = document.getElementById(`ticked-filter-${f}`);
+        if (!btn) return;
+        if (f === state.activeTickedFilter) {
+          btn.className = 'px-3 py-1.5 rounded-xl text-xs font-extrabold bg-core-600 text-white transition';
+        } else if (f === 'full') {
+          btn.className = 'px-3 py-1.5 rounded-xl text-xs font-semibold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 transition';
+        } else if (f === 'partial') {
+          btn.className = 'px-3 py-1.5 rounded-xl text-xs font-semibold bg-amber-500/15 text-amber-300 border border-amber-500/30 transition';
+        } else {
+          btn.className = 'px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-900 text-slate-300 hover:text-white border border-slate-800 transition';
+        }
+      });
+      renderTickedSection();
+    }
+
     function renderTickedSection() {
       const grid = document.getElementById('ticked-grid');
       if (!grid || !state.user) return;
       const userCol = state.userCollections[state.user.username.toLowerCase()] || {};
+      const searchQuery = (document.getElementById('ticked-search')?.value || '').trim().toLowerCase();
 
       const tickedItems = [];
       let fullCount = 0;
@@ -2964,17 +3000,27 @@
         }
       });
 
+      const filteredItems = tickedItems.filter(item => {
+        const matchesSearch = !searchQuery ||
+          item.char.name.toLowerCase().includes(searchQuery) ||
+          item.char.faction.toLowerCase().includes(searchQuery);
+        if (!matchesSearch) return false;
+        if (state.activeTickedFilter === 'full') return item.isComplete;
+        if (state.activeTickedFilter === 'partial') return !item.isComplete;
+        return true;
+      });
+
       const fullEl = document.getElementById('stat-ticked-full-count');
       const anyEl = document.getElementById('stat-ticked-any-count');
       if (fullEl) fullEl.textContent = String(fullCount);
       if (anyEl) anyEl.textContent = String(tickedItems.length);
 
-      if (!tickedItems.length) {
+      if (!filteredItems.length) {
         grid.innerHTML = `<div class="col-span-full text-center py-10 text-xs text-slate-400">${escapeHTML(t('noTickedFound'))}</div>`;
         return;
       }
 
-      grid.innerHTML = tickedItems.map(({ char, entry, approvedCount, totalSlots, isComplete }) => {
+      grid.innerHTML = filteredItems.map(({ char, entry, approvedCount, totalSlots, isComplete }) => {
         const style = FACTION_STYLES[char.faction] || FACTION_STYLES['Core-Tech'];
         const badgeHtml = isComplete
           ? `<span class="px-2 py-0.5 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[10px] font-extrabold">${escapeHTML(t('tickedCompleteBadge'))}</span>`
