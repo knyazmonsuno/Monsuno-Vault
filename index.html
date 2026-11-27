@@ -2923,7 +2923,105 @@
       if (sec === 'collection') renderCollection();
       if (sec === 'ticked') renderTickedSection();
       if (sec === 'chat') renderChat();
-<!-- ... existing ... -->
+      if (sec === 'photo-chat') renderPhotoChat();
+      if (sec === 'leaderboard') renderLeaderboard();
+      if (sec === 'market') renderMarket();
+      if (sec === 'tickets') renderTickets();
+      if (sec === 'admin' && isOwner(state.user?.username)) renderAdmin();
+    }
+
+    function setFactionFilter(faction) {
+      state.activeFactionFilter = faction;
+      saveState(false);
+      document.querySelectorAll('.faction-filter-btn').forEach(btn => {
+        const btnFaction = btn.getAttribute('data-faction');
+        const isActive = btnFaction === faction;
+        if (btnFaction === 'ALL') {
+          btn.className = isActive
+            ? 'faction-filter-btn px-3 py-1.5 rounded-xl text-xs font-extrabold bg-core-600 text-white transition'
+            : 'faction-filter-btn px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-900 text-slate-300 hover:text-white border border-slate-800 transition';
+        } else {
+          const style = FACTION_STYLES[btnFaction] || FACTION_STYLES['Core-Tech'];
+          btn.className = isActive
+            ? `faction-filter-btn px-3 py-1.5 rounded-xl text-xs font-extrabold ${style.plateBg} ring-2 ring-white/50 transition`
+            : 'faction-filter-btn px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-900 text-slate-300 hover:text-white border border-slate-800 transition';
+        }
+      });
+      renderCollection();
+    }
+
+    function renderSlotHex(label, slotData, isNone) {
+      if (isNone) {
+        return `
+          <div class="flex flex-col items-center gap-1">
+            <div class="w-11 h-11 hex-badge bg-slate-800/90 border border-slate-700 flex items-center justify-center text-[10px] font-black text-slate-500">
+              ${escapeHTML(t('slotNone'))}
+            </div>
+            <span class="text-[10px] font-semibold text-slate-500">${escapeHTML(label)}</span>
+          </div>
+        `;
+      }
+
+      const status = slotData?.status || 'none';
+      let badgeStyle = 'bg-slate-800/90 text-slate-400';
+      let icon = '•';
+
+      if (status === 'approved') {
+        badgeStyle = 'bg-emerald-500/25 text-emerald-300 ring-1 ring-emerald-400/60';
+        icon = '✓';
+      } else if (status === 'pending') {
+        badgeStyle = 'bg-amber-500/25 text-amber-300 ring-1 ring-amber-400/60';
+        icon = '⏳';
+      } else if (status === 'rejected') {
+        badgeStyle = 'bg-rose-500/25 text-rose-300 ring-1 ring-rose-400/60';
+        icon = '✕';
+      }
+
+      return `
+        <div class="flex flex-col items-center gap-1">
+          <div class="w-11 h-11 hex-badge ${badgeStyle} flex items-center justify-center text-sm font-black shadow">
+            ${icon}
+          </div>
+          <span class="text-[10px] font-semibold text-slate-300">${escapeHTML(label)}</span>
+        </div>
+      `;
+    }
+
+    function renderCollection() {
+      const grid = document.getElementById('collection-grid');
+      if (!grid || !state.user) return;
+
+      document.querySelectorAll('.faction-filter-btn').forEach(btn => {
+        const btnFaction = btn.getAttribute('data-faction');
+        const isActive = btnFaction === state.activeFactionFilter;
+        if (btnFaction === 'ALL') {
+          btn.className = isActive
+            ? 'faction-filter-btn px-3 py-1.5 rounded-xl text-xs font-extrabold bg-core-600 text-white transition'
+            : 'faction-filter-btn px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-900 text-slate-300 hover:text-white border border-slate-800 transition';
+        } else {
+          const style = FACTION_STYLES[btnFaction] || FACTION_STYLES['Core-Tech'];
+          btn.className = isActive
+            ? `faction-filter-btn px-3 py-1.5 rounded-xl text-xs font-extrabold ${style.plateBg} ring-2 ring-white/50 transition`
+            : 'faction-filter-btn px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-900 text-slate-300 hover:text-white border border-slate-800 transition';
+        }
+      });
+
+      const query = (document.getElementById('collection-search')?.value || '').trim().toLowerCase();
+      const userCol = state.userCollections[state.user.username.toLowerCase()] || {};
+
+      const filtered = state.characters.filter(char => {
+        const matchesFaction = state.activeFactionFilter === 'ALL' || char.faction === state.activeFactionFilter;
+        const matchesQuery = !query ||
+          char.name.toLowerCase().includes(query) ||
+          char.faction.toLowerCase().includes(query);
+        return matchesFaction && matchesQuery;
+      });
+
+      if (!filtered.length) {
+        grid.innerHTML = `<div class="col-span-full text-center py-10 text-xs text-slate-400">${escapeHTML(t('noCharFound'))}</div>`;
+        return;
+      }
+
       grid.innerHTML = filtered.map(char => {
         const style = FACTION_STYLES[char.faction] || FACTION_STYLES['Core-Tech'];
         const entry = userCol[char.id] || {};
