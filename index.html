@@ -173,11 +173,11 @@
         <nav class="w-full lg:w-auto flex items-center lg:flex-wrap gap-1.5 sm:gap-2 overflow-x-auto pb-1 lg:pb-0">
           <button id="nav-collection" type="button" onclick="switchSection('collection')" data-i18n="navCollection"
             class="nav-btn shrink-0 px-3 sm:px-3.5 py-2.5 sm:py-2 rounded-xl text-xs font-extrabold bg-core-600 text-white transition">
-            Koleksiyonum
+            Vitrin
           </button>
           <button id="nav-ticked" type="button" onclick="switchSection('ticked')" data-i18n="navTicked"
             class="nav-btn shrink-0 px-3 sm:px-3.5 py-2.5 sm:py-2 rounded-xl text-xs font-semibold bg-slate-900 text-slate-300 hover:text-white border border-slate-800 transition">
-            Tiklenenler
+            Koleksiyonum
           </button>
           <button id="nav-chat" type="button" onclick="switchSection('chat')" data-i18n="navChat"
             class="nav-btn shrink-0 px-3 sm:px-3.5 py-2.5 sm:py-2 rounded-xl text-xs font-semibold bg-slate-900 text-slate-300 hover:text-white border border-slate-800 transition">
@@ -737,8 +737,8 @@
         registerButton: 'Kayıt Ol ve Başla',
         languageLabel: 'Dil / Language',
         headerSub: 'Koleksiyon • Chat • Pazar',
-        navCollection: 'Koleksiyonum',
-        navTicked: 'Tiklenenler',
+        navCollection: 'Vitrin',
+        navTicked: 'Koleksiyonum',
         navChat: 'Global Chat',
         navPhotoChat: 'Foto Chat',
         navLeaderboard: 'Liderlik',
@@ -748,8 +748,8 @@
         navAdmin: 'Admin Paneli',
         editProfileBtn: 'Profilimi Düzenle',
         logoutBtn: 'Çıkış',
-        showcaseTitle: 'MONSUNO VİTRİNİ & KOLEKSİYONUM',
-        showcaseSubtitle: 'Figür, Capsule ve Cards parçalarının fotoğraflarını yükleyip yönetici onayına gönder; tamamlanan her karakter +1 Monsuno sayılır.',
+        showcaseTitle: 'MONSUNO VİTRİNİ',
+        showcaseSubtitle: 'Figür, Capsule ve Cards parçalarının fotoğraflarını yükleyip yönetici onayına gönder; onaylanan parçalar Koleksiyonum sekmesine geçer.',
         completedMonsunoLabel: 'Tamamlanan Monsuno:',
         completionLabel: 'Tamamlama:',
         addShowcaseBtn: '+ Vitrine Ekle',
@@ -762,13 +762,13 @@
         slotCards: 'Cards',
         slotNone: 'YOK',
         noCharFound: 'Aramanıza uygun karakter bulunamadı.',
-        tickedTitle: 'TİKLENEN MONSUNO\'LAR & PARÇALAR',
-        tickedSubtitle: 'Sadece onaylı tik attığın karakterleri ve tek bir parçasına bile tik atılmış Monsuno ürünlerini burada görüntüleyebilirsin.',
+        tickedTitle: 'KOLEKSİYONUM (ONAYLANAN MONSUNO\'LAR & PARÇALAR)',
+        tickedSubtitle: 'Vitrinden onay alan karakterlerini ve en az bir parçası onaylanmış Monsuno ürünlerini burada görebilirsin.',
         tickedFullMonsunoLabel: 'Tamamlanan Monsuno:',
-        tickedPartialMonsunoLabel: 'Tikli Monsuno / Parça:',
-        noTickedFound: 'Henüz tiklediğiniz hiçbir Monsuno veya parça bulunmuyor.',
+        tickedPartialMonsunoLabel: 'Koleksiyondaki Monsuno:',
+        noTickedFound: 'Henüz onaylanmış hiçbir Monsuno veya parçanız bulunmuyor.',
         tickedCompleteBadge: 'TAMAMLANDI (3/3)',
-        tickedSingleBadge: 'TEK TİK / KISMİ',
+        tickedSingleBadge: 'ONAYLI PARÇA',
         chatTitle: 'GLOBAL KOLEKSİYONER SOHBETİ',
         chatSubtitle: 'Kullanıcı adına tıklayarak profilini ve koleksiyon tamamlama oranını inceleyebilirsin.',
         chatInputPlaceholder: 'Koleksiyonculara mesaj yaz...',
@@ -843,8 +843,8 @@
         registerButton: 'Sign Up & Start',
         languageLabel: 'Language',
         headerSub: 'Collection • Chat • Market',
-        navCollection: 'My Collection',
-        navTicked: 'Ticked Items',
+        navCollection: 'Showcase',
+        navTicked: 'My Collection',
         navChat: 'Global Chat',
         navPhotoChat: 'Photo Chat',
         navLeaderboard: 'Leaderboard',
@@ -854,8 +854,8 @@
         navAdmin: 'Admin Panel',
         editProfileBtn: 'Edit Profile',
         logoutBtn: 'Log Out',
-        showcaseTitle: 'MONSUNO SHOWCASE & COLLECTION',
-        showcaseSubtitle: 'Upload photos of your Figure, Capsule and Cards for admin approval; each completed character counts as +1 Monsuno.',
+        showcaseTitle: 'MONSUNO SHOWCASE',
+        showcaseSubtitle: 'Upload photos of your Figure, Capsule and Cards for admin approval; approved items move into My Collection.',
         completedMonsunoLabel: 'Completed Monsunos:',
         completionLabel: 'Completion:',
         addShowcaseBtn: '+ Add to Showcase',
@@ -868,13 +868,13 @@
         slotCards: 'Cards',
         slotNone: 'NONE',
         noCharFound: 'No characters matched your search.',
-        tickedTitle: 'TICKED MONSUNOS & PARTS',
-        tickedSubtitle: 'View only the Monsunos you completed and any Monsuno item with at least one approved tick.',
+        tickedTitle: 'MY COLLECTION (APPROVED MONSUNOS & PARTS)',
+        tickedSubtitle: 'View only the Monsunos you completed and any Monsuno item with at least one approved part.',
         tickedFullMonsunoLabel: 'Completed Monsunos:',
-        tickedPartialMonsunoLabel: 'Ticked Monsunos:',
-        noTickedFound: 'You have not ticked any Monsuno or part yet.',
+        tickedPartialMonsunoLabel: 'Monsunos in Collection:',
+        noTickedFound: 'You do not have any approved Monsuno or part in your collection yet.',
         tickedCompleteBadge: 'COMPLETED',
-        tickedSingleBadge: 'SINGLE / PARTIAL TICK',
+        tickedSingleBadge: 'APPROVED PART',
         chatTitle: 'GLOBAL COLLECTOR CHAT',
         chatSubtitle: 'Click on any username to view their profile and collection progress.',
         chatInputPlaceholder: 'Write a message to collectors...',
