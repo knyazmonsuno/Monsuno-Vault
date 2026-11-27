@@ -51,6 +51,20 @@
     .hex-badge {
       clip-path: polygon(25% 5%, 75% 5%, 97% 50%, 75% 95%, 25% 95%, 3% 50%);
     }
+    .showcase-photo-frame {
+      background: radial-gradient(circle at center, rgba(56, 189, 248, 0.14), rgba(2, 6, 23, 0.96) 72%);
+    }
+    .showcase-photo-img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      padding: 6px;
+      filter: contrast(1.04) saturate(1.06);
+      transition: transform 0.25s ease;
+    }
+    .group:hover .showcase-photo-img {
+      transform: scale(1.05);
+    }
     button, a, select, input {
       touch-action: manipulation;
     }
@@ -673,13 +687,19 @@
           <h3 id="lightbox-title" class="font-display font-black text-sm sm:text-base text-white">DOĞRULAMA FOTOĞRAFI</h3>
           <p id="lightbox-subtitle" class="text-xs text-slate-400"></p>
         </div>
-        <button type="button" onclick="closePhotoLightbox()" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-extrabold text-white">
-          ✕ Kapat
-        </button>
+        <div class="flex items-center gap-2">
+          <button type="button" id="lightbox-zoom-toggle" onclick="toggleLightboxZoom()"
+            class="px-3 py-1.5 rounded-xl bg-core-600/20 hover:bg-core-600/30 text-core-300 border border-core-500/40 text-xs font-extrabold transition">
+            🔍 1.5x Yakınlaştır
+          </button>
+          <button type="button" onclick="closePhotoLightbox()" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-extrabold text-white">
+            ✕ Kapat
+          </button>
+        </div>
       </div>
       <div class="flex-1 min-h-0 flex items-center justify-center bg-slate-950/90 rounded-2xl p-2 sm:p-4 border border-slate-800/80 overflow-auto">
-        <img id="lightbox-image" src="" alt="Büyük Doğrulama Fotoğrafı"
-          class="max-w-full max-h-[70vh] w-auto h-auto object-contain rounded-xl shadow-2xl select-none" />
+        <img id="lightbox-image" src="" alt="Büyük Doğrulama Fotoğrafı" onclick="toggleLightboxZoom()"
+          class="max-w-full max-h-[70vh] w-auto h-auto object-contain rounded-xl shadow-2xl select-none cursor-zoom-in transition-transform duration-200" />
       </div>
     </div>
   </div>
@@ -692,7 +712,7 @@
     const STORAGE_KEY_MUTATION_TS = 'mv3_last_mutation_at';
     const STORAGE_KEY_QUEUE_TS = 'mv3_queue_mutation_at';
     const STORAGE_KEY_DECISIONS = 'mv3_slot_decisions_v1';
-
+    const STORAGE_KEY_OWNER_CHAR_SNAPSHOT = 'mv3_owner_characters_lock_v1';
     const CURRENCY_SYMBOLS = {
       TL: '₺',
       Dolar: '$',
@@ -1606,6 +1626,52 @@
       return INITIAL_CHARACTERS.map(c => ({ ...c }));
     }
 
+    // Karakter listelerini birleştirirken mevcut ürünlerin kaybolmasını önler
+    function mergeCharactersLists(localList, remoteList, preferLocal = false) {
+      const normLocal = normalizeCharactersArray(localList);
+      const normRemote = normalizeCharactersArray(remoteList);
+      const lockedOwnerChars = normalizeCharactersArray(loadJSON(STORAGE_KEY_OWNER_CHAR_SNAPSHOT, []));
+      const map = new Map();
+
+      const addItem = (item) => {
+        const keyByName = String(item.name || '').trim().toUpperCase();
+        const existing = map.get(item.id) || map.get(keyByName);
+        if (!existing) {
+          map.set(item.id, { ...item });
+          if (keyByName) map.set(keyByName, { ...item });
+          return;
+        }
+        if (!preferLocal) {
+          map.set(existing.id, { ...existing, ...item, id: existing.id });
+          if (keyByName) map.set(keyByName, { ...existing, ...item, id: existing.id });
+        }
+      };
+
+      if (preferLocal) {
+        normRemote.forEach(addItem);
+        normLocal.forEach(addItem);
+      } else {
+        normLocal.forEach(addItem);
+        normRemote.forEach(addItem);
+      }
+
+      // Kullanıcının son kaydettiği karakter kilit listesini de koruyarak eksilmeyi engelle
+      if (lockedOwnerChars.length > 0) {
+        lockedOwnerChars.forEach(addItem);
+      }
+
+      const uniqueChars = [];
+      const seenIds = new Set();
+      map.forEach((val) => {
+        if (val && val.id && !seenIds.has(val.id)) {
+          seenIds.add(val.id);
+          uniqueChars.push(val);
+        }
+      });
+
+      return uniqueChars.length > 0 ? uniqueChars : INITIAL_CHARACTERS.map(c => ({ ...c }));
+    }
+
     let storedUsers = loadJSON('mv3_users', []);
     if (!storedUsers.some(u => u.username.toLowerCase() === OWNER_USERNAME)) {
       storedUsers.unshift({ ...DEFAULT_OWNER_USER });
@@ -1746,22 +1812,53 @@
     }
 
     let activeVerifyModalCharId = null;
+    let isLightboxZoomed = false;
+
+    function applyLightboxZoomState() {
+      const img = document.getElementById('lightbox-image');
+      const btn = document.getElementById('lightbox-zoom-toggle');
+      if (!img) return;
+      if (isLightboxZoomed) {
+        img.style.transform = 'scale(1.5)';
+        img.classList.remove('cursor-zoom-in');
+        img.classList.add('cursor-zoom-out');
+        if (btn) btn.textContent = '🔎 Normal Boyut';
+      } else {
+        img.style.transform = 'scale(1)';
+        img.classList.remove('cursor-zoom-out');
+        img.classList.add('cursor-zoom-in');
+        if (btn) btn.textContent = '🔍 1.5x Yakınlaştır';
+      }
+    }
+
+    function toggleLightboxZoom() {
+      isLightboxZoomed = !isLightboxZoomed;
+      applyLightboxZoomState();
+    }
 
     function applyIncomingInstantSnapshot(snapshot) {
       if (!snapshot || typeof snapshot !== 'object') return;
-      const incomingTs = Number(snapshot.ts || 0);
-      const incomingQueueTs = Number(snapshot.queueTs || incomingTs);
-      if (incomingTs > 0 && incomingTs < lastLocalMutationAt) return;
+      const incomingTs = typeof snapshot.ts === 'number' ? snapshot.ts : 0;
+      const incomingQueueTs = typeof snapshot.queueTs === 'number' ? snapshot.queueTs : incomingTs;
+      if (incomingTs > 0 && incomingTs < lastLocalMutationAt && incomingQueueTs < lastQueueMutationAt) {
+        return;
+      }
 
       let changed = false;
-      if (Array.isArray(snapshot.users) && JSON.stringify(snapshot.users) !== JSON.stringify(state.users)) {
-        state.users = snapshot.users;
-        changed = true;
+      if (Array.isArray(snapshot.users) && snapshot.users.length) {
+        let mergedUsers = snapshot.users.slice();
+        if (!mergedUsers.some(u => (u.username || '').toLowerCase() === OWNER_USERNAME)) {
+          mergedUsers.unshift({ ...DEFAULT_OWNER_USER });
+        }
+        if (JSON.stringify(mergedUsers) !== JSON.stringify(state.users)) {
+          state.users = mergedUsers;
+          changed = true;
+        }
       }
       if (Array.isArray(snapshot.characters)) {
-        const norm = normalizeCharactersArray(snapshot.characters);
-        if (JSON.stringify(norm) !== JSON.stringify(state.characters)) {
-          state.characters = norm;
+        const mergedChars = mergeCharactersLists(state.characters, snapshot.characters, incomingTs < lastLocalMutationAt);
+        if (JSON.stringify(mergedChars) !== JSON.stringify(state.characters)) {
+          state.characters = mergedChars;
           changed = true;
         }
       }
@@ -1981,6 +2078,8 @@
       const title = document.getElementById('lightbox-title');
       const subtitle = document.getElementById('lightbox-subtitle');
       if (!modal || !img) return;
+      isLightboxZoomed = false;
+      applyLightboxZoomState();
       img.src = req.photo;
       if (title) title.textContent = `${req.charName || 'MONSUNO'} — ${req.slotLabel || 'DOĞRULAMA'}`;
       if (subtitle) subtitle.textContent = `${req.displayName || ''} (@${req.username || ''})`;
@@ -1990,6 +2089,8 @@
     function closePhotoLightbox() {
       const modal = document.getElementById('photo-lightbox-modal');
       const img = document.getElementById('lightbox-image');
+      isLightboxZoomed = false;
+      applyLightboxZoomState();
       if (img) img.src = '';
       modal?.classList.add('hidden');
     }
@@ -2060,15 +2161,16 @@
         reader.onload = (e) => {
           const img = new Image();
           img.onload = () => {
-            let w = img.width || maxDim;
-            let h = img.height || maxDim;
-            if (w > maxDim || h > maxDim) {
+            const targetMaxDim = Math.max(Number(maxDim) || 480, 960);
+            let w = img.width || targetMaxDim;
+            let h = img.height || targetMaxDim;
+            if (w > targetMaxDim || h > targetMaxDim) {
               if (w > h) {
-                h = Math.round((h * maxDim) / w);
-                w = maxDim;
+                h = Math.round((h * targetMaxDim) / w);
+                w = targetMaxDim;
               } else {
-                w = Math.round((w * maxDim) / h);
-                h = maxDim;
+                w = Math.round((w * targetMaxDim) / h);
+                h = targetMaxDim;
               }
             }
             const canvas = document.createElement('canvas');
@@ -2076,11 +2178,13 @@
             canvas.height = h;
             const ctx = canvas.getContext('2d');
             if (!ctx) return resolve(e.target.result);
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'high';
             ctx.drawImage(img, 0, 0, w, h);
             try {
-              resolve(canvas.toDataURL('image/webp', quality));
+              resolve(canvas.toDataURL('image/webp', Math.max(Number(quality) || 0.88, 0.9)));
             } catch (err) {
-              resolve(canvas.toDataURL('image/jpeg', quality));
+              resolve(canvas.toDataURL('image/jpeg', Math.max(Number(quality) || 0.88, 0.9)));
             }
           };
           img.onerror = () => resolve(e.target.result);
@@ -2192,10 +2296,10 @@
             changed = true;
           }
         }
-        if (!localIsNewer && !dedicatedCharsUpdated && Array.isArray(remote.characters) && remote.characters.length > 0) {
-          const normalizedRemoteChars = normalizeCharactersArray(remote.characters);
-          if (JSON.stringify(normalizedRemoteChars) !== JSON.stringify(state.characters)) {
-            state.characters = normalizedRemoteChars;
+        if (!dedicatedCharsUpdated && Array.isArray(remote.characters) && remote.characters.length > 0) {
+          const mergedChars = mergeCharactersLists(state.characters, remote.characters, localIsNewer);
+          if (JSON.stringify(mergedChars) !== JSON.stringify(state.characters)) {
+            state.characters = mergedChars;
             changed = true;
           }
         }
@@ -2209,12 +2313,12 @@
             changed = true;
           }
         }
-        const dismissedSet = new Set((state.dismissedQueueIds || []).map(String));
+        const dismissedSet = new Set(Array.isArray(state.dismissedQueueIds) ? state.dismissedQueueIds.map(String) : []);
 
         if (remote.slotDecisions && typeof remote.slotDecisions === 'object') {
           const mergedDecisions = { ...(state.slotDecisions || {}) };
           Object.entries(remote.slotDecisions).forEach(([k, v]) => {
-            if (!v || !v.status) return;
+            if (!v || typeof v !== 'object') return;
             const prev = mergedDecisions[k];
             if (!prev || Number(v.ts || 0) >= Number(prev.ts || 0)) {
               mergedDecisions[k] = { ...v };
@@ -2566,6 +2670,9 @@
       try {
         localStorage.setItem(STORAGE_KEY_CHARACTERS, JSON.stringify(safeChars));
         localStorage.setItem('mv3_characters', JSON.stringify(safeChars));
+        if (state.user && isOwner(state.user.username)) {
+          localStorage.setItem(STORAGE_KEY_OWNER_CHAR_SNAPSHOT, JSON.stringify(safeChars));
+        }
       } catch (e) {}
     }
 
@@ -2721,7 +2828,7 @@
       }
 
       isSubmittingVerification = true;
-      compressImageFile(file, 640, 0.8).then(photoData => {
+      compressImageFile(file, 1080, 0.92).then(photoData => {
         if (!photoData) return;
         const reqId = 'req-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
         state.userCollections[userKey] = {
@@ -3042,16 +3149,16 @@
         const entry = userCol[char.id] || {};
         return `
           <div onclick="openVerifyModal('${char.id}')"
-            class="cursor-pointer rounded-3xl p-4 border ${style.cardBg} hover:scale-[1.01] transition shadow-xl flex flex-col items-center justify-between gap-3">
+            class="group cursor-pointer rounded-3xl p-4 border ${style.cardBg} hover:scale-[1.01] transition shadow-xl flex flex-col items-center justify-between gap-3">
             <div class="w-full flex items-center justify-between text-[11px]">
               <span class="font-bold ${style.badgeText}">${escapeHTML(char.faction)}</span>
               <span class="text-slate-400">${escapeHTML(t('verifyOrEdit'))}</span>
             </div>
 
-            <div class="w-36 h-36 hex-main bg-slate-900/90 p-1.5 shadow-inner flex items-center justify-center">
+            <div class="w-40 h-40 hex-main showcase-photo-frame p-1.5 shadow-inner flex items-center justify-center">
               <img src="${escapeHTML(char.image)}" alt="${escapeHTML(char.name)}"
                 onerror="this.src='https://placehold.co/320x320/0f172a/38bdf8?text=${encodeURIComponent(char.name)}'"
-                class="w-full h-full object-cover hex-main" />
+                class="showcase-photo-img hex-main" />
             </div>
 
             <div class="w-full flex items-center justify-around pt-1">
@@ -3149,16 +3256,16 @@
 
         return `
           <div onclick="openVerifyModal('${char.id}')"
-            class="cursor-pointer rounded-3xl p-4 border ${style.cardBg} hover:scale-[1.01] transition shadow-xl flex flex-col items-center justify-between gap-3">
+            class="group cursor-pointer rounded-3xl p-4 border ${style.cardBg} hover:scale-[1.01] transition shadow-xl flex flex-col items-center justify-between gap-3">
             <div class="w-full flex items-center justify-between gap-2 text-[11px]">
               <span class="font-bold ${style.badgeText}">${escapeHTML(char.faction)}</span>
               ${badgeHtml}
             </div>
 
-            <div class="w-36 h-36 hex-main bg-slate-900/90 p-1.5 shadow-inner flex items-center justify-center">
+            <div class="w-40 h-40 hex-main showcase-photo-frame p-1.5 shadow-inner flex items-center justify-center">
               <img src="${escapeHTML(char.image)}" alt="${escapeHTML(char.name)}"
                 onerror="this.src='https://placehold.co/320x320/0f172a/38bdf8?text=${encodeURIComponent(char.name)}'"
-                class="w-full h-full object-cover hex-main" />
+                class="showcase-photo-img hex-main" />
             </div>
 
             <div class="w-full flex items-center justify-around pt-1">
@@ -3298,7 +3405,7 @@
       };
 
       if (fileInput?.files?.[0]) {
-        compressImageFile(fileInput.files[0], 420, 0.82).then(imgData => finish(imgData));
+        compressImageFile(fileInput.files[0], 1080, 0.92).then(imgData => finish(imgData));
       } else {
         finish(null);
       }
@@ -3366,7 +3473,7 @@
       };
 
       if (fileInput?.files?.[0]) {
-        compressImageFile(fileInput.files[0], 420, 0.82).then(imgData => {
+        compressImageFile(fileInput.files[0], 1080, 0.92).then(imgData => {
           apply(imgData);
         });
       } else {
@@ -3526,7 +3633,9 @@
         const trEntry = state.translationsCache[`${lang}::pchat-${item.id}`];
         return `
           <div class="glass-panel rounded-3xl overflow-hidden border border-slate-800 flex flex-col">
-            <img src="${escapeHTML(item.photo)}" alt="Paylaşım" class="w-full h-52 object-cover bg-slate-950" />
+            <div class="w-full h-56 showcase-photo-frame flex items-center justify-center">
+              <img src="${escapeHTML(item.photo)}" alt="Paylaşım" class="w-full h-full object-contain p-2" />
+            </div>
             <div class="p-4 flex-1 flex flex-col justify-between gap-2">
               <div>
                 <button type="button" onclick="openUserInspectModal('${escapeHTML(item.username)}')"
@@ -3570,7 +3679,7 @@
       const fileInput = document.getElementById('photo-chat-file');
       const caption = document.getElementById('photo-chat-caption').value.trim();
       if (!fileInput?.files?.[0]) return;
-      compressImageFile(fileInput.files[0], 720, 0.8).then(photoData => {
+      compressImageFile(fileInput.files[0], 1080, 0.92).then(photoData => {
         if (!photoData) return;
         state.photoChat.unshift({
           id: 'pchat-' + Date.now(),
@@ -3664,7 +3773,9 @@
         const trEntry = state.translationsCache[`${lang}::lst-${item.id}`];
         return `
           <div class="glass-panel rounded-3xl overflow-hidden border border-slate-800 flex flex-col">
-            <img src="${escapeHTML(item.photo)}" alt="${escapeHTML(item.title)}" class="w-full h-48 object-cover bg-slate-950" />
+            <div class="w-full h-52 showcase-photo-frame flex items-center justify-center">
+              <img src="${escapeHTML(item.photo)}" alt="${escapeHTML(item.title)}" class="w-full h-full object-contain p-2" />
+            </div>
             <div class="p-4 flex-1 flex flex-col justify-between gap-3">
               <div>
                 <div class="flex items-center justify-between gap-2">
@@ -3758,7 +3869,7 @@
       };
 
       if (photoInput?.files?.[0]) {
-        compressImageFile(photoInput.files[0], 640, 0.8).then(photoData => saveListing(photoData));
+        compressImageFile(photoInput.files[0], 1080, 0.92).then(photoData => saveListing(photoData));
       } else {
         saveListing(null);
       }
