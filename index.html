@@ -646,6 +646,7 @@
     const DEFAULT_LIVE_DB_URL = 'https://monsuno-vault-default-rtdb.firebaseio.com';
     const STORAGE_KEY_CHARACTERS = 'mv3_characters_v2';
     const STORAGE_KEY_MUTATION_TS = 'mv3_last_mutation_at';
+    const STORAGE_KEY_QUEUE_TS = 'mv3_queue_mutation_at';
 
     const CURRENCY_SYMBOLS = {
       TL: '₺',
@@ -1593,6 +1594,7 @@
     function broadcastInstantUpdate() {
       const snapshot = {
         ts: lastLocalMutationAt || Date.now(),
+        queueTs: lastQueueMutationAt || lastLocalMutationAt || Date.now(),
         users: state.users,
         characters: normalizeCharactersArray(state.characters),
         userCollections: state.userCollections,
@@ -1619,10 +1621,12 @@
       for (const req of items) {
         if (!req || typeof req !== 'object') continue;
         const idKey = String(req.id || '').trim();
+        // Aynı kullanıcı, aynı karakter ve aynı parça (slotKey) tekilleştirilir;
+        // farklı parçalar (örneğin capsule ve cards) ayrı kayıt olarak korunur.
         const logicalKey = [
           String(req.username || '').trim().toLowerCase(),
           String(req.charId || '').trim(),
-          String(req.slotKey || '').trim()
+          String(req.slotKey || '').trim().toLowerCase()
         ].join('::');
 
         if (idKey && seenIds.has(idKey)) continue;
@@ -1646,6 +1650,7 @@
     function applyIncomingSnapshot(snap) {
       if (!snap || typeof snap !== 'object') return;
       const incomingTs = typeof snap.ts === 'number' ? snap.ts : 0;
+      const incomingQueueTs = typeof snap.queueTs === 'number' ? snap.queueTs : incomingTs;
 
       let changed = false;
       if (Array.isArray(snap.users) && snap.users.length) {
@@ -1671,10 +1676,15 @@
           changed = true;
         }
       }
-      if (Array.isArray(snap.queue)) {
+      if (Array.isArray(snap.queue) && incomingQueueTs >= lastQueueMutationAt) {
         const cleanedQueue = deduplicateQueueItems(snap.queue);
         if (JSON.stringify(cleanedQueue) !== JSON.stringify(state.queue)) {
           state.queue = cleanedQueue;
+          lastQueueMutationAt = Math.max(lastQueueMutationAt, incomingQueueTs);
+          try {
+            localStorage.setItem(STORAGE_KEY_QUEUE_TS, String(lastQueueMutationAt));
+            localStorage.setItem('mv3_queue', JSON.stringify(state.queue));
+          } catch (e) {}
           changed = true;
         }
       }
@@ -1733,8 +1743,12 @@
         state.userCollections = loadJSON('mv3_user_collections', state.userCollections);
         refreshAllVisibleViews();
       } else if (event.key === 'mv3_queue') {
-        state.queue = deduplicateQueueItems(loadJSON('mv3_queue', state.queue));
-        refreshAllVisibleViews();
+        const queueTs = Number(loadJSON(STORAGE_KEY_QUEUE_TS, 0)) || 0;
+        if (queueTs >= lastQueueMutationAt) {
+          state.queue = deduplicateQueueItems(loadJSON('mv3_queue', state.queue));
+          lastQueueMutationAt = Math.max(lastQueueMutationAt, queueTs);
+          refreshAllVisibleViews();
+        }
       } else if (event.key === 'mv3_users') {
         state.users = loadJSON('mv3_users', state.users);
         refreshAllVisibleViews();
@@ -1840,8 +1854,10 @@
       const normalizedChars = normalizeCharactersArray(state.characters);
       state.characters = normalizedChars;
       state.queue = deduplicateQueueItems(state.queue);
+      const effectiveUpdatedAt = Math.max(lastLocalMutationAt || 0, lastQueueMutationAt || 0, Date.now());
       return {
-        updatedAt: lastLocalMutationAt || Date.now(),
+        updatedAt: effectiveUpdatedAt,
+        queueUpdatedAt: lastQueueMutationAt || effectiveUpdatedAt,
         users: state.users,
         characters: normalizedChars,
         userCollections: state.userCollections,
@@ -1856,11 +1872,19 @@
 
     let pushDebounceTimer = null;
     let lastLocalMutationAt = Number(loadJSON(STORAGE_KEY_MUTATION_TS, 0)) || 0;
+    let lastQueueMutationAt = Number(loadJSON(STORAGE_KEY_QUEUE_TS, 0)) || 0;
 
-    function markLocalMutation() {
-      lastLocalMutationAt = Date.now();
+    function markLocalMutation(queueChanged = false) {
+      const nowTs = Date.now();
+      lastLocalMutationAt = Math.max(lastLocalMutationAt + 1, nowTs);
+      if (queueChanged) {
+        lastQueueMutationAt = Math.max(lastQueueMutationAt + 1, lastLocalMutationAt);
+      }
       try {
         localStorage.setItem(STORAGE_KEY_MUTATION_TS, String(lastLocalMutationAt));
+        if (queueChanged) {
+          localStorage.setItem(STORAGE_KEY_QUEUE_TS, String(lastQueueMutationAt));
+        }
       } catch (e) {}
     }
 
@@ -1989,6 +2013,7 @@
         }
 
         const remoteTs = typeof remote.updatedAt === 'number' ? remote.updatedAt : 0;
+        const remoteQueueTs = typeof remote.queueUpdatedAt === 'number' ? remote.queueUpdatedAt : remoteTs;
         const localIsNewer = !forceInitial && remoteTs > 0 && remoteTs < lastLocalMutationAt;
 
         let changed = dedicatedCharsUpdated;
@@ -2035,12 +2060,12 @@
         }
         if (Array.isArray(remote.queue)) {
           const cleanedRemoteQueue = deduplicateQueueItems(remote.queue);
-          const mergedQueue = forceInitial || remoteTs >= lastLocalMutationAt
-            ? cleanedRemoteQueue
-            : mergeQueueArrays(state.queue, cleanedRemoteQueue, false);
-          if (JSON.stringify(mergedQueue) !== JSON.stringify(state.queue)) {
-            state.queue = mergedQueue;
-            changed = true;
+          if (forceInitial || remoteQueueTs >= lastQueueMutationAt) {
+            if (JSON.stringify(cleanedRemoteQueue) !== JSON.stringify(state.queue)) {
+              state.queue = cleanedRemoteQueue;
+              lastQueueMutationAt = Math.max(lastQueueMutationAt, remoteQueueTs);
+              changed = true;
+            }
           }
         }
         if (!localIsNewer && Array.isArray(remote.chat) && JSON.stringify(remote.chat) !== JSON.stringify(state.chat)) {
@@ -2272,8 +2297,8 @@
       } catch (e) {}
     }
 
-    function saveState(syncRemote = true, syncChars = false) {
-      markLocalMutation();
+    function saveState(syncRemote = true, syncChars = false, queueChanged = false) {
+      markLocalMutation(queueChanged);
       persistCharactersNow(state.characters);
       state.queue = deduplicateQueueItems(state.queue);
       try {
@@ -2302,7 +2327,11 @@
         pushCharactersDedicated();
       }
       if (syncRemote) {
-        scheduleRemotePush();
+        if (queueChanged) {
+          flushRemotePushNow();
+        } else {
+          scheduleRemotePush();
+        }
       }
     }
 
@@ -2338,22 +2367,43 @@
 
     let isSubmittingVerification = false;
 
+    function getActiveUserCollectionEntry(username, charId) {
+      const userKey = String(username || '').trim().toLowerCase();
+      const latestDiskCollections = loadJSON('mv3_user_collections', {});
+      const baseUserCol = {
+        ...(latestDiskCollections[userKey] || {}),
+        ...(state.userCollections[userKey] || {})
+      };
+      const mergedCharEntry = {
+        ...(latestDiskCollections[userKey]?.[charId] || {}),
+        ...(state.userCollections[userKey]?.[charId] || {})
+      };
+      return { userKey, baseUserCol, mergedCharEntry };
+    }
+
     function submitSlotVerification(charId, slotKey, slotLabel) {
       if (isSubmittingVerification) return;
       const char = state.characters.find(c => c.id === charId);
       if (!char || !state.user) return;
 
-      const userKey = state.user.username.toLowerCase();
-      if (!state.userCollections[userKey]) state.userCollections[userKey] = {};
-      if (!state.userCollections[userKey][charId]) state.userCollections[userKey][charId] = {};
+      const { userKey, baseUserCol, mergedCharEntry } = getActiveUserCollectionEntry(state.user.username, charId);
 
       if (isOwner(state.user.username)) {
-        state.userCollections[userKey][charId][slotKey] = { status: 'approved', photo: null, approvedAt: Date.now() };
-        state.queue = state.queue.filter(
-          r => !(r.username.toLowerCase() === userKey && r.charId === charId && r.slotKey === slotKey)
+        state.userCollections[userKey] = {
+          ...baseUserCol,
+          [charId]: {
+            ...mergedCharEntry,
+            [slotKey]: { status: 'approved', photo: null, approvedAt: Date.now() }
+          }
+        };
+        state.queue = deduplicateQueueItems(state.queue).filter(
+          r => !(
+            r.username.toLowerCase() === userKey &&
+            r.charId === charId &&
+            String(r.slotKey || '').toLowerCase() === String(slotKey).toLowerCase()
+          )
         );
-        saveState(true);
-        flushRemotePushNow();
+        saveState(true, false, true);
         updateStats();
         renderCollection();
         openVerifyModal(charId);
@@ -2372,8 +2422,25 @@
       compressImageFile(file, 640, 0.8).then(photoData => {
         if (!photoData) return;
         const reqId = 'req-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
-        state.userCollections[userKey][charId][slotKey] = { status: 'pending', photo: photoData };
-        state.queue = [
+        state.userCollections[userKey] = {
+          ...baseUserCol,
+          [charId]: {
+            ...mergedCharEntry,
+            [slotKey]: { status: 'pending', photo: photoData, submittedAt: Date.now() }
+          }
+        };
+        const latestDiskQueue = deduplicateQueueItems(loadJSON('mv3_queue', []));
+        const existingQueue = deduplicateQueueItems([
+          ...state.queue,
+          ...latestDiskQueue
+        ]).filter(
+          r => !(
+            r.username.toLowerCase() === userKey &&
+            r.charId === charId &&
+            String(r.slotKey || '').toLowerCase() === String(slotKey).toLowerCase()
+          )
+        );
+        state.queue = deduplicateQueueItems([
           {
             id: reqId,
             username: state.user.username,
@@ -2385,18 +2452,14 @@
             photo: photoData,
             submittedAt: Date.now()
           },
-          ...state.queue.filter(
-            r => !(r.username.toLowerCase() === userKey && r.charId === charId && r.slotKey === slotKey)
-          )
-        ];
-        state.queue = deduplicateQueueItems(state.queue);
+          ...existingQueue
+        ]);
         if (fileInput) fileInput.value = '';
-        saveState(true);
-        flushRemotePushNow();
+        saveState(true, false, true);
         updateStats();
         renderCollection();
         openVerifyModal(charId);
-        showToast('Fotoğraf site yöneticisine onaya gönderildi.');
+        showToast(`${char.name} (${slotLabel}) fotoğrafı kuyruğa eklendi; diğer parçalarınız korundu.`);
       }).finally(() => {
         isSubmittingVerification = false;
       });
@@ -2760,51 +2823,6 @@
       }).join('');
 
       openModal('verify-modal');
-    }
-
-    function submitSlotVerification(charId, slotKey, slotLabel) {
-      const char = state.characters.find(c => c.id === charId);
-      if (!char || !state.user) return;
-
-      const userKey = state.user.username.toLowerCase();
-      if (!state.userCollections[userKey]) state.userCollections[userKey] = {};
-      if (!state.userCollections[userKey][charId]) state.userCollections[userKey][charId] = {};
-
-      if (isOwner(state.user.username)) {
-        state.userCollections[userKey][charId][slotKey] = { status: 'approved', photo: null, approvedAt: Date.now() };
-        saveState(true);
-        updateStats();
-        renderCollection();
-        openVerifyModal(charId);
-        showToast(`${char.name} (${slotLabel}) anında onaylandı ve kaydedildi!`);
-        return;
-      }
-
-      const fileInput = document.getElementById(`verify-file-${slotKey}`);
-      if (!fileInput?.files?.[0]) {
-        showToast('Lütfen doğrulama için bir fotoğraf seçin.');
-        return;
-      }
-
-      compressImageFile(fileInput.files[0], 640, 0.8).then(photoData => {
-        if (!photoData) return;
-        state.userCollections[userKey][charId][slotKey] = { status: 'pending', photo: photoData };
-        state.queue.unshift({
-          id: 'req-' + Date.now(),
-          username: state.user.username,
-          displayName: state.user.displayName,
-          charId,
-          charName: char.name,
-          slotKey,
-          slotLabel,
-          photo: photoData
-        });
-        saveState(true);
-        updateStats();
-        renderCollection();
-        openVerifyModal(charId);
-        showToast('Fotoğraf site yöneticisine onaya gönderildi.');
-      });
     }
 
     function removeOwnSlotTick(charId, slotKey) {
@@ -3563,8 +3581,10 @@
         photo: req.photo,
         approvedAt: Date.now()
       };
-      state.queue = state.queue.filter(r => r.id !== reqId);
-      saveState(true);
+      state.queue = state.queue.filter(
+        r => r.id !== reqId && !(r.username.toLowerCase() === userKey && r.charId === req.charId && r.slotKey === req.slotKey)
+      );
+      saveState(true, false, true);
       updateStats();
       renderAdmin();
       showToast('Anında onaylandı ve kaydedildi!');
@@ -3574,14 +3594,16 @@
       const req = state.queue.find(r => r.id === reqId);
       if (!req) return;
       const userKey = req.username.toLowerCase();
-      if (state.userCollections[userKey]?.[req.charId]) {
+      if (state.userCollections[userKey]?.[req.charId]?.[req.slotKey]?.status === 'pending') {
         delete state.userCollections[userKey][req.charId][req.slotKey];
       }
-      state.queue = state.queue.filter(r => r.id !== reqId);
-      saveState(true);
+      state.queue = state.queue.filter(
+        r => r.id !== reqId && !(r.username.toLowerCase() === userKey && r.charId === req.charId && r.slotKey === req.slotKey)
+      );
+      saveState(true, false, true);
       updateStats();
       renderAdmin();
-      showToast('Talep reddedildi.');
+      showToast('Talep reddedildi ve kuyruktan kaldırıldı.');
     }
 
     function toggleUserBan(username) {
@@ -3749,7 +3771,7 @@
       setupAutoSaveHooks();
       if (getNormalizedDatabaseURL()) {
         pullRemoteSharedState(false, true);
-        setInterval(() => pullRemoteSharedState(false, false), 450);
+        setInterval(() => pullRemoteSharedState(false, false), 300);
       }
       if (state.user) {
         bootAuthenticatedApp();
