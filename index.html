@@ -625,6 +625,8 @@
     const OWNER_USERNAME = 'knyazmonsuno';
     const OWNER_PASSWORD = 'knyazsuno58';
     const DEFAULT_LIVE_DB_URL = 'https://monsuno-vault-default-rtdb.firebaseio.com';
+    const STORAGE_KEY_CHARACTERS = 'mv3_characters_v2';
+    const STORAGE_KEY_MUTATION_TS = 'mv3_last_mutation_at';
 
     const CURRENCY_SYMBOLS = {
       TL: '₺',
@@ -1480,6 +1482,35 @@
       }
     }
 
+    function normalizeCharactersArray(list) {
+      if (!Array.isArray(list) || list.length === 0) {
+        return INITIAL_CHARACTERS.map(c => ({ ...c }));
+      }
+      return list
+        .filter(item => item && typeof item === 'object' && item.id && item.name)
+        .map(item => ({
+          id: String(item.id),
+          name: String(item.name).trim().toUpperCase(),
+          faction: FACTION_STYLES[item.faction] ? item.faction : 'Core-Tech',
+          noCapsule: Boolean(item.noCapsule),
+          image: typeof item.image === 'string' && item.image.trim()
+            ? item.image.trim()
+            : `https://placehold.co/320x320/0f172a/38bdf8?text=${encodeURIComponent(String(item.name).trim().toUpperCase())}`
+        }));
+    }
+
+    function loadInitialCharacters() {
+      const v2 = loadJSON(STORAGE_KEY_CHARACTERS, null);
+      if (Array.isArray(v2) && v2.length > 0) {
+        return normalizeCharactersArray(v2);
+      }
+      const v1 = loadJSON('mv3_characters', null);
+      if (Array.isArray(v1) && v1.length > 0) {
+        return normalizeCharactersArray(v1);
+      }
+      return INITIAL_CHARACTERS.map(c => ({ ...c }));
+    }
+
     let storedUsers = loadJSON('mv3_users', []);
     if (!storedUsers.some(u => u.username.toLowerCase() === OWNER_USERNAME)) {
       storedUsers.unshift({ ...DEFAULT_OWNER_USER });
@@ -1490,7 +1521,7 @@
       liveDbUrl: DEFAULT_LIVE_DB_URL,
       user: loadJSON('mv3_current_user', null),
       users: storedUsers,
-      characters: loadJSON('mv3_characters', INITIAL_CHARACTERS),
+      characters: loadInitialCharacters(),
       userCollections: loadJSON('mv3_user_collections', {}),
       queue: loadJSON('mv3_queue', []),
       chat: loadJSON('mv3_chat', []),
@@ -1530,10 +1561,12 @@
     }
 
     function buildSharedPayload() {
+      const normalizedChars = normalizeCharactersArray(state.characters);
+      state.characters = normalizedChars;
       return {
-        updatedAt: Date.now(),
+        updatedAt: lastLocalMutationAt || Date.now(),
         users: state.users,
-        characters: state.characters,
+        characters: normalizedChars,
         userCollections: state.userCollections,
         queue: state.queue,
         chat: state.chat,
@@ -1545,12 +1578,12 @@
     }
 
     let pushDebounceTimer = null;
-    let lastLocalMutationAt = loadJSON('mv3_last_mutation_at', 0);
+    let lastLocalMutationAt = Number(loadJSON(STORAGE_KEY_MUTATION_TS, 0)) || 0;
 
     function markLocalMutation() {
       lastLocalMutationAt = Date.now();
       try {
-        localStorage.setItem('mv3_last_mutation_at', String(lastLocalMutationAt));
+        localStorage.setItem(STORAGE_KEY_MUTATION_TS, String(lastLocalMutationAt));
       } catch (e) {}
     }
 
@@ -1600,8 +1633,8 @@
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            updatedAt: Date.now(),
-            items: state.characters
+            updatedAt: lastLocalMutationAt || Date.now(),
+            items: normalizeCharactersArray(state.characters)
           })
         });
       } catch (e) {}
@@ -1615,11 +1648,17 @@
         if (!res.ok) return false;
         const data = await res.json();
         if (data && Array.isArray(data.items) && data.items.length > 0) {
-          if (typeof data.updatedAt === 'number' && data.updatedAt < lastLocalMutationAt) {
+          const remoteTs = typeof data.updatedAt === 'number' ? data.updatedAt : 0;
+          if (remoteTs < lastLocalMutationAt) {
             return false;
           }
-          if (JSON.stringify(data.items) !== JSON.stringify(state.characters)) {
-            state.characters = data.items;
+          const normalizedRemote = normalizeCharactersArray(data.items);
+          if (JSON.stringify(normalizedRemote) !== JSON.stringify(state.characters)) {
+            state.characters = normalizedRemote;
+            lastLocalMutationAt = Math.max(lastLocalMutationAt, remoteTs);
+            try {
+              localStorage.setItem(STORAGE_KEY_MUTATION_TS, String(lastLocalMutationAt));
+            } catch (e) {}
             return true;
           }
         }
@@ -1666,12 +1705,15 @@
         }
         updateLiveSyncButton(true);
         const remote = await res.json();
-        if (!remote) {
-          scheduleRemotePush();
+        if (!remote || typeof remote !== 'object') {
+          if (state.characters.length > 0 || state.users.length > 1) {
+            scheduleRemotePush();
+          }
           return;
         }
 
-        if (!forceInitial && typeof remote.updatedAt === 'number' && remote.updatedAt < lastLocalMutationAt) {
+        const remoteTs = typeof remote.updatedAt === 'number' ? remote.updatedAt : 0;
+        if (remoteTs < lastLocalMutationAt) {
           return;
         }
 
@@ -1686,9 +1728,12 @@
             changed = true;
           }
         }
-        if (!dedicatedCharsUpdated && Array.isArray(remote.characters) && remote.characters.length && JSON.stringify(remote.characters) !== JSON.stringify(state.characters)) {
-          state.characters = remote.characters;
-          changed = true;
+        if (!dedicatedCharsUpdated && Array.isArray(remote.characters) && remote.characters.length > 0) {
+          const normalizedRemoteChars = normalizeCharactersArray(remote.characters);
+          if (JSON.stringify(normalizedRemoteChars) !== JSON.stringify(state.characters)) {
+            state.characters = normalizedRemoteChars;
+            changed = true;
+          }
         }
         if (remote.userCollections && typeof remote.userCollections === 'object') {
           const mergedCollections = { ...remote.userCollections };
@@ -1938,13 +1983,22 @@
       if (state.activeSection === 'market') renderMarket();
     }
 
+    function persistCharactersNow(chars) {
+      const safeChars = normalizeCharactersArray(chars);
+      state.characters = safeChars;
+      try {
+        localStorage.setItem(STORAGE_KEY_CHARACTERS, JSON.stringify(safeChars));
+        localStorage.setItem('mv3_characters', JSON.stringify(safeChars));
+      } catch (e) {}
+    }
+
     function saveState(syncRemote = true, syncChars = false) {
       markLocalMutation();
+      persistCharactersNow(state.characters);
       try {
         localStorage.setItem('mv3_lang', state.lang);
         localStorage.setItem('mv3_current_user', JSON.stringify(state.user));
         localStorage.setItem('mv3_users', JSON.stringify(state.users));
-        localStorage.setItem('mv3_characters', JSON.stringify(state.characters));
         localStorage.setItem('mv3_user_collections', JSON.stringify(state.userCollections));
         localStorage.setItem('mv3_queue', JSON.stringify(state.queue));
         localStorage.setItem('mv3_chat', JSON.stringify(state.chat));
@@ -1957,7 +2011,7 @@
         localStorage.setItem('mv3_market_filter', JSON.stringify(state.activeMarketFilter));
       } catch (e) {
         try {
-          localStorage.setItem('mv3_characters', JSON.stringify(state.characters));
+          persistCharactersNow(state.characters);
           localStorage.setItem('mv3_user_collections', JSON.stringify(state.userCollections));
         } catch (err) {}
       }
@@ -2423,28 +2477,38 @@
     function handleAddCharacter(event) {
       event.preventDefault();
       if (!isOwner(state.user?.username)) return;
-      const name = document.getElementById('new-char-name').value.trim().toUpperCase();
-      const faction = document.getElementById('new-char-faction').value;
-      const noCapsule = document.getElementById('new-char-nocapsule').checked;
+      const nameInput = document.getElementById('new-char-name');
+      const factionSelect = document.getElementById('new-char-faction');
+      const noCapsuleCheckbox = document.getElementById('new-char-nocapsule');
       const fileInput = document.getElementById('new-char-file');
 
+      const name = (nameInput?.value || '').trim().toUpperCase();
+      if (!name) return;
+      const faction = factionSelect?.value || 'Core-Tech';
+      const noCapsule = Boolean(noCapsuleCheckbox?.checked);
+
       const finish = (imgData) => {
-        state.characters.push({
-          id: 'char-' + Date.now(),
-          name,
-          faction,
-          noCapsule,
-          image: imgData || `https://placehold.co/320x320/0f172a/38bdf8?text=${encodeURIComponent(name)}`
-        });
+        const nextList = normalizeCharactersArray([
+          ...state.characters,
+          {
+            id: 'char-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+            name,
+            faction,
+            noCapsule,
+            image: imgData || `https://placehold.co/320x320/0f172a/38bdf8?text=${encodeURIComponent(name)}`
+          }
+        ]);
+        persistCharactersNow(nextList);
         saveState(true, true);
+        flushRemotePushNow();
         updateStats();
         renderCollection();
         closeModal('add-char-modal');
         event.target.reset();
-        showToast(`${name} kalıcı olarak vitrine kaydedildi.`);
+        showToast(`${name} vitrine eklendi ve kaydedildi.`);
       };
 
-      if (fileInput.files?.[0]) {
+      if (fileInput?.files?.[0]) {
         compressImageFile(fileInput.files[0], 420, 0.82).then(imgData => finish(imgData));
       } else {
         finish(null);
@@ -2491,31 +2555,41 @@
     function saveCharacterEdit(charId) {
       const char = state.characters.find(c => c.id === charId);
       if (!char) return;
-      char.name = document.getElementById(`edit-name-${charId}`).value.trim().toUpperCase() || char.name;
-      char.faction = document.getElementById(`edit-faction-${charId}`).value;
-      char.noCapsule = document.getElementById(`edit-nocapsule-${charId}`).checked;
+      const updatedName = (document.getElementById(`edit-name-${charId}`)?.value || '').trim().toUpperCase() || char.name;
+      const updatedFaction = document.getElementById(`edit-faction-${charId}`)?.value || char.faction;
+      const updatedNoCapsule = Boolean(document.getElementById(`edit-nocapsule-${charId}`)?.checked);
       const fileInput = document.getElementById(`edit-file-${charId}`);
 
-      const apply = () => {
+      const apply = (newImage = null) => {
+        const nextList = state.characters.map(item => item.id === charId ? {
+          ...item,
+          name: updatedName,
+          faction: updatedFaction,
+          noCapsule: updatedNoCapsule,
+          image: newImage || item.image
+        } : item);
+        persistCharactersNow(nextList);
         saveState(true, true);
+        flushRemotePushNow();
         updateStats();
         renderCollection();
-        showToast(`${char.name} kalıcı olarak güncellendi.`);
+        showToast(`${updatedName} kalıcı olarak güncellendi.`);
       };
 
       if (fileInput?.files?.[0]) {
         compressImageFile(fileInput.files[0], 420, 0.82).then(imgData => {
-          if (imgData) char.image = imgData;
-          apply();
+          apply(imgData);
         });
       } else {
-        apply();
+        apply(null);
       }
     }
 
     function deleteCharacter(charId) {
-      state.characters = state.characters.filter(c => c.id !== charId);
+      const filtered = state.characters.filter(c => c.id !== charId);
+      persistCharactersNow(filtered);
       saveState(true, true);
+      flushRemotePushNow();
       updateStats();
       renderCollection();
       openEditShowcaseModal();
@@ -3293,7 +3367,7 @@
     function setupAutoSaveHooks() {
       document.addEventListener('visibilitychange', () => {
         if (document.hidden && state.user) {
-          saveState(false);
+          saveState(false, true);
           flushRemotePushNow();
         } else if (!document.hidden && getNormalizedDatabaseURL()) {
           pullRemoteSharedState(false, false);
@@ -3302,14 +3376,14 @@
 
       window.addEventListener('pagehide', () => {
         if (state.user) {
-          saveState(false);
+          saveState(false, true);
           flushRemotePushNow();
         }
       });
 
       window.addEventListener('beforeunload', () => {
         if (state.user) {
-          saveState(false);
+          saveState(false, false);
         }
       });
     }
