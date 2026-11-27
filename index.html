@@ -1545,6 +1545,12 @@
     }
 
     let pushDebounceTimer = null;
+    let lastLocalMutationAt = 0;
+
+    function markLocalMutation() {
+      lastLocalMutationAt = Date.now();
+    }
+
     function scheduleRemotePush() {
       const dbUrl = getNormalizedDatabaseURL();
       if (!dbUrl) return;
@@ -1560,13 +1566,15 @@
         } catch (e) {
           updateLiveSyncButton(false);
         }
-      }, 60);
+      }, 0);
     }
 
     let isPullingRemote = false;
     async function pullRemoteSharedState(showAlertOnFirst = false) {
       const dbUrl = getNormalizedDatabaseURL();
       if (!dbUrl || isPullingRemote) return;
+      // Yerel bir onay/değişiklikten hemen sonra eski uzak verinin üzerine yazmasını engelle
+      if (Date.now() - lastLocalMutationAt < 2500) return;
       isPullingRemote = true;
       try {
         const res = await fetch(`${dbUrl}/monsunoVaultShared.json`, { cache: 'no-store' });
@@ -1578,6 +1586,11 @@
         const remote = await res.json();
         if (!remote) {
           scheduleRemotePush();
+          return;
+        }
+
+        // Uzak veri yerel son işlemden daha eskiyse geri çekip üzerine yazma
+        if (typeof remote.updatedAt === 'number' && remote.updatedAt < lastLocalMutationAt) {
           return;
         }
 
@@ -1596,9 +1609,30 @@
           state.characters = remote.characters;
           changed = true;
         }
-        if (remote.userCollections && typeof remote.userCollections === 'object' && JSON.stringify(remote.userCollections) !== JSON.stringify(state.userCollections)) {
-          state.userCollections = remote.userCollections;
-          changed = true;
+        if (remote.userCollections && typeof remote.userCollections === 'object') {
+          // Onaylanmış tiklerin eski uzak snapshot ile silinmesini engelle
+          const mergedCollections = { ...remote.userCollections };
+          Object.keys(state.userCollections || {}).forEach(uKey => {
+            const localUserCol = state.userCollections[uKey] || {};
+            const remoteUserCol = mergedCollections[uKey] || {};
+            const nextUserCol = { ...remoteUserCol };
+            Object.keys(localUserCol).forEach(cId => {
+              const localCharSlots = localUserCol[cId] || {};
+              const remoteCharSlots = nextUserCol[cId] || {};
+              const nextCharSlots = { ...remoteCharSlots };
+              Object.keys(localCharSlots).forEach(sKey => {
+                if (localCharSlots[sKey]?.status === 'approved') {
+                  nextCharSlots[sKey] = localCharSlots[sKey];
+                }
+              });
+              nextUserCol[cId] = nextCharSlots;
+            });
+            mergedCollections[uKey] = nextUserCol;
+          });
+          if (JSON.stringify(mergedCollections) !== JSON.stringify(state.userCollections)) {
+            state.userCollections = mergedCollections;
+            changed = true;
+          }
         }
         if (Array.isArray(remote.queue) && JSON.stringify(remote.queue) !== JSON.stringify(state.queue)) {
           state.queue = remote.queue;
@@ -1825,6 +1859,7 @@
     }
 
     function saveState(syncRemote = true) {
+      markLocalMutation();
       try {
         localStorage.setItem('mv3_lang', state.lang);
         localStorage.setItem('mv3_current_user', JSON.stringify(state.user));
@@ -2243,12 +2278,12 @@
       if (!state.userCollections[userKey][charId]) state.userCollections[userKey][charId] = {};
 
       if (isOwner(state.user.username)) {
-        state.userCollections[userKey][charId][slotKey] = { status: 'approved', photo: null };
+        state.userCollections[userKey][charId][slotKey] = { status: 'approved', photo: null, approvedAt: Date.now() };
         saveState(true);
         updateStats();
         renderCollection();
         openVerifyModal(charId);
-        showToast(`${char.name} (${slotLabel}) fotoğrafsız onaylandı!`);
+        showToast(`${char.name} (${slotLabel}) anında onaylandı!`);
         return;
       }
 
@@ -3006,13 +3041,14 @@
       if (!state.userCollections[userKey][req.charId]) state.userCollections[userKey][req.charId] = {};
       state.userCollections[userKey][req.charId][req.slotKey] = {
         status: 'approved',
-        photo: req.photo
+        photo: req.photo,
+        approvedAt: Date.now()
       };
       state.queue = state.queue.filter(r => r.id !== reqId);
       saveState(true);
       updateStats();
       renderAdmin();
-      showToast('Onay verildi ve kullanıcının tik kutusu güncellendi.');
+      showToast('Anında onaylandı!');
     }
 
     function rejectQueueItem(reqId) {
@@ -3168,7 +3204,7 @@
       updateLiveSyncButton(Boolean(getNormalizedDatabaseURL()));
       if (getNormalizedDatabaseURL()) {
         pullRemoteSharedState(false);
-        setInterval(() => pullRemoteSharedState(false), 1000);
+        setInterval(() => pullRemoteSharedState(false), 3000);
       }
       if (state.user) {
         bootAuthenticatedApp();
@@ -3178,4 +3214,4 @@
     initApp();
   </script>
 </body>
-</html>
+</html></selection-tag>
