@@ -1536,6 +1536,163 @@
       translationsCache: {}
     };
 
+    // Aynı tarayıcıda açık diğer sekmelerle anlık senkronizasyon kanalı
+    const INSTANT_CHANNEL_NAME = 'monsuno_vault_instant_sync_v1';
+    let instantChannel = null;
+    if (typeof BroadcastChannel !== 'undefined') {
+      try {
+        instantChannel = new BroadcastChannel(INSTANT_CHANNEL_NAME);
+      } catch (e) {
+        instantChannel = null;
+      }
+    }
+
+    function refreshAllVisibleViews() {
+      if (!state.user) return;
+      const latestMe = state.users.find(u => u.username.toLowerCase() === state.user.username.toLowerCase());
+      if (latestMe?.banned) {
+        handleLogout();
+        return;
+      }
+      if (latestMe) {
+        state.user = { ...latestMe };
+        const avEl = document.getElementById('header-user-avatar');
+        const lblEl = document.getElementById('header-user-label');
+        if (avEl) avEl.src = state.user.avatar || 'https://placehold.co/64x64/1e293b/f8fafc?text=U';
+        if (lblEl) lblEl.innerHTML = `${escapeHTML(state.user.displayName)} ${verifiedBadgeHTML(state.user.username)}`;
+      }
+      updateStats();
+      if (state.activeSection === 'collection') renderCollection();
+      if (state.activeSection === 'chat') renderChat();
+      if (state.activeSection === 'photo-chat') renderPhotoChat();
+      if (state.activeSection === 'leaderboard') renderLeaderboard();
+      if (state.activeSection === 'market') renderMarket();
+      if (state.activeSection === 'tickets') renderTickets();
+      if (state.activeSection === 'admin' && isOwner(state.user.username)) renderAdmin();
+    }
+
+    function broadcastInstantUpdate() {
+      const snapshot = {
+        ts: lastLocalMutationAt || Date.now(),
+        users: state.users,
+        characters: normalizeCharactersArray(state.characters),
+        userCollections: state.userCollections,
+        queue: state.queue,
+        chat: state.chat,
+        photoChat: state.photoChat,
+        market: state.market,
+        tickets: state.tickets,
+        reports: state.reports
+      };
+      if (instantChannel) {
+        try {
+          instantChannel.postMessage(snapshot);
+        } catch (e) {}
+      }
+    }
+
+    function applyIncomingSnapshot(snap) {
+      if (!snap || typeof snap !== 'object') return;
+      const incomingTs = typeof snap.ts === 'number' ? snap.ts : 0;
+      if (incomingTs && incomingTs < lastLocalMutationAt) return;
+
+      let changed = false;
+      if (Array.isArray(snap.users) && snap.users.length) {
+        let mergedUsers = snap.users.slice();
+        if (!mergedUsers.some(u => (u.username || '').toLowerCase() === OWNER_USERNAME)) {
+          mergedUsers.unshift({ ...DEFAULT_OWNER_USER });
+        }
+        if (JSON.stringify(mergedUsers) !== JSON.stringify(state.users)) {
+          state.users = mergedUsers;
+          changed = true;
+        }
+      }
+      if (Array.isArray(snap.characters) && snap.characters.length > 0) {
+        const normChars = normalizeCharactersArray(snap.characters);
+        if (JSON.stringify(normChars) !== JSON.stringify(state.characters)) {
+          state.characters = normChars;
+          changed = true;
+        }
+      }
+      if (snap.userCollections && typeof snap.userCollections === 'object') {
+        if (JSON.stringify(snap.userCollections) !== JSON.stringify(state.userCollections)) {
+          state.userCollections = snap.userCollections;
+          changed = true;
+        }
+      }
+      if (Array.isArray(snap.queue) && JSON.stringify(snap.queue) !== JSON.stringify(state.queue)) {
+        state.queue = snap.queue;
+        changed = true;
+      }
+      if (Array.isArray(snap.chat) && JSON.stringify(snap.chat) !== JSON.stringify(state.chat)) {
+        state.chat = snap.chat;
+        changed = true;
+      }
+      if (Array.isArray(snap.photoChat) && JSON.stringify(snap.photoChat) !== JSON.stringify(state.photoChat)) {
+        state.photoChat = snap.photoChat;
+        changed = true;
+      }
+      if (Array.isArray(snap.market) && JSON.stringify(snap.market) !== JSON.stringify(state.market)) {
+        state.market = snap.market;
+        changed = true;
+      }
+      if (Array.isArray(snap.tickets) && JSON.stringify(snap.tickets) !== JSON.stringify(state.tickets)) {
+        state.tickets = snap.tickets;
+        changed = true;
+      }
+      if (Array.isArray(snap.reports) && JSON.stringify(snap.reports) !== JSON.stringify(state.reports)) {
+        state.reports = snap.reports;
+        changed = true;
+      }
+
+      if (changed) {
+        if (incomingTs) lastLocalMutationAt = Math.max(lastLocalMutationAt, incomingTs);
+        persistCharactersNow(state.characters);
+        refreshAllVisibleViews();
+      }
+    }
+
+    if (instantChannel) {
+      instantChannel.onmessage = (event) => {
+        applyIncomingSnapshot(event.data);
+      };
+    }
+
+    window.addEventListener('storage', (event) => {
+      if (!event.key) return;
+      if (event.key === STORAGE_KEY_CHARACTERS || event.key === 'mv3_characters') {
+        const freshChars = normalizeCharactersArray(loadJSON(STORAGE_KEY_CHARACTERS, state.characters));
+        if (JSON.stringify(freshChars) !== JSON.stringify(state.characters)) {
+          state.characters = freshChars;
+          refreshAllVisibleViews();
+        }
+      } else if (event.key === 'mv3_chat') {
+        state.chat = loadJSON('mv3_chat', state.chat);
+        refreshAllVisibleViews();
+      } else if (event.key === 'mv3_photo_chat') {
+        state.photoChat = loadJSON('mv3_photo_chat', state.photoChat);
+        refreshAllVisibleViews();
+      } else if (event.key === 'mv3_market') {
+        state.market = loadJSON('mv3_market', state.market);
+        refreshAllVisibleViews();
+      } else if (event.key === 'mv3_user_collections') {
+        state.userCollections = loadJSON('mv3_user_collections', state.userCollections);
+        refreshAllVisibleViews();
+      } else if (event.key === 'mv3_queue') {
+        state.queue = loadJSON('mv3_queue', state.queue);
+        refreshAllVisibleViews();
+      } else if (event.key === 'mv3_users') {
+        state.users = loadJSON('mv3_users', state.users);
+        refreshAllVisibleViews();
+      } else if (event.key === 'mv3_tickets') {
+        state.tickets = loadJSON('mv3_tickets', state.tickets);
+        refreshAllVisibleViews();
+      } else if (event.key === 'mv3_reports') {
+        state.reports = loadJSON('mv3_reports', state.reports);
+        refreshAllVisibleViews();
+      }
+    });
+
     function t(key) {
       const lang = TRANSLATIONS[state.lang] ? state.lang : 'tr';
       return TRANSLATIONS[lang]?.[key] || TRANSLATIONS.tr[key] || key;
@@ -2015,6 +2172,8 @@
           localStorage.setItem('mv3_user_collections', JSON.stringify(state.userCollections));
         } catch (err) {}
       }
+      broadcastInstantUpdate();
+      refreshAllVisibleViews();
       if (syncChars) {
         pushCharactersDedicated();
       }
@@ -3394,7 +3553,7 @@
       setupAutoSaveHooks();
       if (getNormalizedDatabaseURL()) {
         pullRemoteSharedState(false, true);
-        setInterval(() => pullRemoteSharedState(false, false), 2000);
+        setInterval(() => pullRemoteSharedState(false, false), 750);
       }
       if (state.user) {
         bootAuthenticatedApp();
