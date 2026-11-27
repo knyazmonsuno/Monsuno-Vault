@@ -2194,6 +2194,7 @@
 
       document.getElementById('verify-slots-container').innerHTML = slots.map(s => {
         const slotData = entry[s.key] || { status: 'none' };
+        const adminOwner = isOwner(state.user.username);
         const statusText = slotData.status === 'approved'
           ? '<span class="text-emerald-400 font-bold">Onaylı (✓)</span>'
           : slotData.status === 'pending'
@@ -2210,6 +2211,11 @@
               <button type="button" onclick="removeOwnSlotTick('${char.id}', '${s.key}')"
                 class="w-full py-2 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/30 text-xs font-bold transition">
                 Kendi Koleksiyonumdan Tiki Kaldır
+              </button>
+            ` : adminOwner ? `
+              <button type="button" onclick="submitSlotVerification('${char.id}', '${s.key}', '${s.label}')"
+                class="w-full py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-xs font-extrabold text-slate-950 transition">
+                ✓ Fotoğrafsız Direkt Onayla
               </button>
             ` : `
               <div class="flex flex-col sm:flex-row gap-2">
@@ -2230,8 +2236,24 @@
 
     function submitSlotVerification(charId, slotKey, slotLabel) {
       const char = state.characters.find(c => c.id === charId);
+      if (!char || !state.user) return;
+
+      const userKey = state.user.username.toLowerCase();
+      if (!state.userCollections[userKey]) state.userCollections[userKey] = {};
+      if (!state.userCollections[userKey][charId]) state.userCollections[userKey][charId] = {};
+
+      if (isOwner(state.user.username)) {
+        state.userCollections[userKey][charId][slotKey] = { status: 'approved', photo: null };
+        saveState(true);
+        updateStats();
+        renderCollection();
+        openVerifyModal(charId);
+        showToast(`${char.name} (${slotLabel}) fotoğrafsız onaylandı!`);
+        return;
+      }
+
       const fileInput = document.getElementById(`verify-file-${slotKey}`);
-      if (!char || !state.user || !fileInput?.files?.[0]) {
+      if (!fileInput?.files?.[0]) {
         showToast('Lütfen doğrulama için bir fotoğraf seçin.');
         return;
       }
@@ -2239,32 +2261,22 @@
       const reader = new FileReader();
       reader.onload = e => {
         const photoData = e.target.result;
-        const userKey = state.user.username.toLowerCase();
-        if (!state.userCollections[userKey]) state.userCollections[userKey] = {};
-        if (!state.userCollections[userKey][charId]) state.userCollections[userKey][charId] = {};
-
-        if (isOwner(state.user.username)) {
-          state.userCollections[userKey][charId][slotKey] = { status: 'approved', photo: photoData };
-          showToast(`${char.name} (${slotLabel}) doğrulandı!`);
-        } else {
-          state.userCollections[userKey][charId][slotKey] = { status: 'pending', photo: photoData };
-          state.queue.unshift({
-            id: 'req-' + Date.now(),
-            username: state.user.username,
-            displayName: state.user.displayName,
-            charId,
-            charName: char.name,
-            slotKey,
-            slotLabel,
-            photo: photoData
-          });
-          showToast('Fotoğraf site yöneticisine onaya gönderildi.');
-        }
-
+        state.userCollections[userKey][charId][slotKey] = { status: 'pending', photo: photoData };
+        state.queue.unshift({
+          id: 'req-' + Date.now(),
+          username: state.user.username,
+          displayName: state.user.displayName,
+          charId,
+          charName: char.name,
+          slotKey,
+          slotLabel,
+          photo: photoData
+        });
         saveState(true);
         updateStats();
         renderCollection();
         openVerifyModal(charId);
+        showToast('Fotoğraf site yöneticisine onaya gönderildi.');
       };
       reader.readAsDataURL(fileInput.files[0]);
     }
