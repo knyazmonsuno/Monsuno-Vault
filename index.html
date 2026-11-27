@@ -713,8 +713,6 @@
     const STORAGE_KEY_QUEUE_TS = 'mv3_queue_mutation_at';
     const STORAGE_KEY_DECISIONS = 'mv3_slot_decisions_v1';
     const STORAGE_KEY_OWNER_CHAR_SNAPSHOT = 'mv3_owner_characters_lock_v1';
-    const STORAGE_KEY_CHAR_TOMBSTONES = 'mv3_deleted_char_ids_v1';
-    const STORAGE_KEY_MAX_CHAR_COUNT = 'mv3_max_characters_seen_v1';
     const CURRENCY_SYMBOLS = {
       TL: '₺',
       Dolar: '$',
@@ -1603,12 +1601,8 @@
       if (!Array.isArray(list) || list.length === 0) {
         return INITIAL_CHARACTERS.map(c => ({ ...c }));
       }
-      const deletedSet = new Set(
-        (Array.isArray(loadJSON(STORAGE_KEY_CHAR_TOMBSTONES, [])) ? loadJSON(STORAGE_KEY_CHAR_TOMBSTONES, []) : [])
-          .map(String)
-      );
       return list
-        .filter(item => item && typeof item === 'object' && item.id && item.name && !deletedSet.has(String(item.id)))
+        .filter(item => item && typeof item === 'object' && item.id && item.name)
         .map(item => ({
           id: String(item.id),
           name: String(item.name).trim().toUpperCase(),
@@ -1618,22 +1612,6 @@
             ? item.image.trim()
             : `https://placehold.co/320x320/0f172a/38bdf8?text=${encodeURIComponent(String(item.name).trim().toUpperCase())}`
         }));
-    }
-
-    function recordDeletedCharacterId(charId) {
-      if (!charId) return;
-      const current = Array.isArray(loadJSON(STORAGE_KEY_CHAR_TOMBSTONES, []))
-        ? loadJSON(STORAGE_KEY_CHAR_TOMBSTONES, []).map(String)
-        : [];
-      if (!current.includes(String(charId))) {
-        current.push(String(charId));
-        try {
-          localStorage.setItem(STORAGE_KEY_CHAR_TOMBSTONES, JSON.stringify(current.slice(-500)));
-        } catch (e) {}
-      }
-      if (state && Array.isArray(state.deletedCharIds) && !state.deletedCharIds.includes(String(charId))) {
-        state.deletedCharIds.push(String(charId));
-      }
     }
 
     function loadInitialCharacters() {
@@ -1650,17 +1628,12 @@
 
     // Karakter listelerini birleştirirken mevcut ürünlerin kaybolmasını önler
     function mergeCharactersLists(localList, remoteList, preferLocal = false) {
-      const deletedSet = new Set([
-        ...(Array.isArray(state?.deletedCharIds) ? state.deletedCharIds.map(String) : []),
-        ...(Array.isArray(loadJSON(STORAGE_KEY_CHAR_TOMBSTONES, [])) ? loadJSON(STORAGE_KEY_CHAR_TOMBSTONES, []).map(String) : [])
-      ]);
-      const normLocal = normalizeCharactersArray(localList).filter(c => !deletedSet.has(String(c.id)));
-      const normRemote = normalizeCharactersArray(remoteList).filter(c => !deletedSet.has(String(c.id)));
-      const lockedOwnerChars = normalizeCharactersArray(loadJSON(STORAGE_KEY_OWNER_CHAR_SNAPSHOT, [])).filter(c => !deletedSet.has(String(c.id)));
+      const normLocal = normalizeCharactersArray(localList);
+      const normRemote = normalizeCharactersArray(remoteList);
+      const lockedOwnerChars = normalizeCharactersArray(loadJSON(STORAGE_KEY_OWNER_CHAR_SNAPSHOT, []));
       const map = new Map();
 
       const addItem = (item) => {
-        if (!item || deletedSet.has(String(item.id))) return;
         const keyByName = String(item.name || '').trim().toUpperCase();
         const existing = map.get(item.id) || map.get(keyByName);
         if (!existing) {
@@ -1690,7 +1663,7 @@
       const uniqueChars = [];
       const seenIds = new Set();
       map.forEach((val) => {
-        if (val && val.id && !seenIds.has(val.id) && !deletedSet.has(String(val.id))) {
+        if (val && val.id && !seenIds.has(val.id)) {
           seenIds.add(val.id);
           uniqueChars.push(val);
         }
@@ -1810,7 +1783,6 @@
       user: loadJSON('mv3_current_user', null),
       users: storedUsers,
       characters: loadInitialCharacters(),
-      deletedCharIds: Array.isArray(loadJSON(STORAGE_KEY_CHAR_TOMBSTONES, [])) ? loadJSON(STORAGE_KEY_CHAR_TOMBSTONES, []).map(String) : [],
       userCollections: loadJSON('mv3_user_collections', {}),
       slotDecisions: initialDecisionsMap,
       queue: deduplicateQueueItems(loadJSON('mv3_queue', []), initialDismissedQueueIds, initialDecisionsMap),
@@ -1943,7 +1915,7 @@
         if (incomingTs > lastLocalMutationAt) {
           lastLocalMutationAt = incomingTs;
         }
-        refreshAllVisibleViews();
+        refreshAllVisibleViews(false);
       }
     }
 
@@ -1981,10 +1953,30 @@
       } else if (event.key === 'mv3_reports') {
         state.reports = loadJSON('mv3_reports', []);
       }
-      refreshAllVisibleViews();
+      refreshAllVisibleViews(false);
     });
 
-    function refreshAllVisibleViews() {
+    function isUserInteractingWithControls() {
+      const activeEl = document.activeElement;
+      if (activeEl && ['INPUT', 'TEXTAREA', 'SELECT'].includes(activeEl.tagName)) {
+        return true;
+      }
+      const openModalIds = [
+        'verify-modal',
+        'add-char-modal',
+        'edit-showcase-modal',
+        'profile-modal',
+        'user-inspect-modal',
+        'create-listing-modal',
+        'photo-lightbox-modal'
+      ];
+      return openModalIds.some(id => {
+        const el = document.getElementById(id);
+        return el && !el.classList.contains('hidden');
+      });
+    }
+
+    function refreshAllVisibleViews(forceRender = true) {
       if (!state.user) return;
       const latestMe = state.users.find(u => u.username.toLowerCase() === state.user.username.toLowerCase());
       if (latestMe?.banned) {
@@ -1995,21 +1987,24 @@
         state.user = { ...latestMe };
         const avEl = document.getElementById('header-user-avatar');
         const lblEl = document.getElementById('header-user-label');
-        if (avEl) avEl.src = state.user.avatar || 'https://placehold.co/64x64/1e293b/f8fafc?text=U';
+        if (avEl && document.activeElement !== avEl) {
+          avEl.src = state.user.avatar || 'https://placehold.co/64x64/1e293b/f8fafc?text=U';
+        }
         if (lblEl) lblEl.innerHTML = `${escapeHTML(state.user.displayName)} ${verifiedBadgeHTML(state.user.username)}`;
       }
       updateStats();
-      if (state.activeSection === 'collection') renderCollection();
-      if (state.activeSection === 'ticked') renderTickedSection();
-      if (state.activeSection === 'chat') renderChat();
-      if (state.activeSection === 'photo-chat') renderPhotoChat();
-      if (state.activeSection === 'leaderboard') renderLeaderboard();
-      if (state.activeSection === 'market') renderMarket();
-      if (state.activeSection === 'tickets') renderTickets();
-      if (state.activeSection === 'admin' && isOwner(state.user.username)) renderAdmin();
-      const verifyModal = document.getElementById('verify-modal');
-      if (activeVerifyModalCharId && verifyModal && !verifyModal.classList.contains('hidden')) {
-        openVerifyModal(activeVerifyModalCharId);
+      if (!forceRender && isUserInteractingWithControls()) {
+        return;
+      }
+      if (forceRender) {
+        if (state.activeSection === 'collection') renderCollection();
+        if (state.activeSection === 'ticked') renderTickedSection();
+        if (state.activeSection === 'chat') renderChat();
+        if (state.activeSection === 'photo-chat') renderPhotoChat();
+        if (state.activeSection === 'leaderboard') renderLeaderboard();
+        if (state.activeSection === 'market') renderMarket();
+        if (state.activeSection === 'tickets') renderTickets();
+        if (state.activeSection === 'admin' && isOwner(state.user.username)) renderAdmin();
       }
     }
 
@@ -2489,7 +2484,7 @@
         }
 
         if (changed) {
-          saveState(false);
+          saveState(false, false, false, false);
           if (state.user) {
             const latestMe = state.users.find(u => u.username.toLowerCase() === state.user.username.toLowerCase());
             if (latestMe?.banned) {
@@ -2502,17 +2497,15 @@
               document.getElementById('header-user-label').innerHTML = `${escapeHTML(state.user.displayName)} ${verifiedBadgeHTML(state.user.username)}`;
             }
             updateStats();
-            if (state.activeSection === 'collection') renderCollection();
-      if (state.activeSection === 'ticked') renderTickedSection();
-      if (state.activeSection === 'chat') renderChat();
-            if (state.activeSection === 'photo-chat') renderPhotoChat();
-            if (state.activeSection === 'leaderboard') renderLeaderboard();
-            if (state.activeSection === 'market') renderMarket();
-            if (state.activeSection === 'tickets') renderTickets();
-            if (state.activeSection === 'admin' && isOwner(state.user.username)) renderAdmin();
-            const verifyModal = document.getElementById('verify-modal');
-            if (activeVerifyModalCharId && verifyModal && !verifyModal.classList.contains('hidden')) {
-              openVerifyModal(activeVerifyModalCharId);
+            if (!isUserInteractingWithControls()) {
+              if (state.activeSection === 'collection') renderCollection();
+              if (state.activeSection === 'ticked') renderTickedSection();
+              if (state.activeSection === 'chat') renderChat();
+              if (state.activeSection === 'photo-chat') renderPhotoChat();
+              if (state.activeSection === 'leaderboard') renderLeaderboard();
+              if (state.activeSection === 'market') renderMarket();
+              if (state.activeSection === 'tickets') renderTickets();
+              if (state.activeSection === 'admin' && isOwner(state.user.username)) renderAdmin();
             }
           }
         } else if (showAlertOnFirst) {
@@ -2694,27 +2687,17 @@
 
     function persistCharactersNow(chars) {
       const safeChars = normalizeCharactersArray(chars);
-      const prevMax = Number(localStorage.getItem(STORAGE_KEY_MAX_CHAR_COUNT) || 0);
-      const lockedSnapshot = normalizeCharactersArray(loadJSON(STORAGE_KEY_OWNER_CHAR_SNAPSHOT, []));
-
-      // Eğer mevcut liste önceki kilitli listeden daha az sayıda karakter içeriyorsa, kayıp olmaması için birleştir
-      const mergedSafeChars = (lockedSnapshot.length > safeChars.length && isOwner(state?.user?.username))
-        ? mergeCharactersLists(safeChars, lockedSnapshot, true)
-        : safeChars;
-
-      state.characters = mergedSafeChars;
-      const nextMax = Math.max(prevMax, mergedSafeChars.length);
+      state.characters = safeChars;
       try {
-        localStorage.setItem(STORAGE_KEY_CHARACTERS, JSON.stringify(mergedSafeChars));
-        localStorage.setItem('mv3_characters', JSON.stringify(mergedSafeChars));
-        localStorage.setItem(STORAGE_KEY_MAX_CHAR_COUNT, String(nextMax));
+        localStorage.setItem(STORAGE_KEY_CHARACTERS, JSON.stringify(safeChars));
+        localStorage.setItem('mv3_characters', JSON.stringify(safeChars));
         if (state.user && isOwner(state.user.username)) {
-          localStorage.setItem(STORAGE_KEY_OWNER_CHAR_SNAPSHOT, JSON.stringify(mergedSafeChars));
+          localStorage.setItem(STORAGE_KEY_OWNER_CHAR_SNAPSHOT, JSON.stringify(safeChars));
         }
       } catch (e) {}
     }
 
-    function saveState(syncRemote = true, syncChars = false, queueChanged = false) {
+    function saveState(syncRemote = true, syncChars = false, queueChanged = false, shouldRefreshViews = true) {
       markLocalMutation(queueChanged);
       persistCharactersNow(state.characters);
       applyRecordedDecisionsToCollections();
@@ -2727,7 +2710,6 @@
         localStorage.setItem(STORAGE_KEY_DECISIONS, JSON.stringify(state.slotDecisions || {}));
         localStorage.setItem('mv3_queue', JSON.stringify(state.queue));
         localStorage.setItem('mv3_dismissed_queue_ids', JSON.stringify(state.dismissedQueueIds || []));
-        localStorage.setItem(STORAGE_KEY_CHAR_TOMBSTONES, JSON.stringify(state.deletedCharIds || []));
         localStorage.setItem('mv3_chat', JSON.stringify(state.chat));
         localStorage.setItem('mv3_photo_chat', JSON.stringify(state.photoChat));
         localStorage.setItem('mv3_market', JSON.stringify(state.market));
@@ -2743,16 +2725,18 @@
           localStorage.setItem('mv3_user_collections', JSON.stringify(state.userCollections));
         } catch (err) {}
       }
-      if (!dedicatedCharsUpdated && Array.isArray(remote.characters) && remote.characters.length > 0) {
-        const mergedChars = mergeCharactersLists(state.characters, remote.characters, localIsNewer);
-        // Uzaktan gelen liste mevcut ve kilitli listeden daha küçükse düşüşü engelle
-        const lockedChars = normalizeCharactersArray(loadJSON(STORAGE_KEY_OWNER_CHAR_SNAPSHOT, []));
-        const protectedChars = mergedChars.length < Math.max(state.characters.length, lockedChars.length)
-          ? mergeCharactersLists(mergedChars, state.characters.length >= lockedChars.length ? state.characters : lockedChars, true)
-          : mergedChars;
-        if (JSON.stringify(protectedChars) !== JSON.stringify(state.characters)) {
-          state.characters = protectedChars;
-          changed = true;
+      broadcastInstantUpdate();
+      if (shouldRefreshViews) {
+        refreshAllVisibleViews(true);
+      }
+      if (syncChars) {
+        pushCharactersDedicated();
+      }
+      if (syncRemote) {
+        if (queueChanged) {
+          flushRemotePushNow();
+        } else {
+          scheduleRemotePush();
         }
       }
     }
@@ -3062,7 +3046,7 @@
 
     function switchSection(sec) {
       state.activeSection = sec;
-      saveState(false);
+      saveState(false, false, false, false);
       const sections = ['collection', 'ticked', 'chat', 'photo-chat', 'leaderboard', 'market', 'tickets', 'support', 'admin'];
       sections.forEach(s => {
         document.getElementById(`section-${s}`)?.classList.toggle('hidden', s !== sec);
@@ -3093,7 +3077,7 @@
 
     function setFactionFilter(faction) {
       state.activeFactionFilter = faction;
-      saveState(false);
+      saveState(false, false, false, false);
       document.querySelectorAll('.faction-filter-btn').forEach(btn => {
         const btnFaction = btn.getAttribute('data-faction');
         const isActive = btnFaction === faction;
@@ -3222,7 +3206,7 @@
     // Sadece en az 1 onaylı tiki bulunan karakterleri ve tamamlanan Monsuno'ları listeler
     function setTickedFilter(filter) {
       state.activeTickedFilter = ['all', 'full', 'partial'].includes(filter) ? filter : 'all';
-      saveState(false);
+      saveState(false, false, false, false);
       ['all', 'full', 'partial'].forEach(f => {
         const btn = document.getElementById(`ticked-filter-${f}`);
         if (!btn) return;
@@ -3521,8 +3505,7 @@
     }
 
     function deleteCharacter(charId) {
-      recordDeletedCharacterId(charId);
-      const filtered = state.characters.filter(c => String(c.id) !== String(charId));
+      const filtered = state.characters.filter(c => c.id !== charId);
       persistCharactersNow(filtered);
       saveState(true, true);
       flushRemotePushNow();
@@ -3775,7 +3758,7 @@
 
     function setMarketFilter(filter) {
       state.activeMarketFilter = filter;
-      saveState(false);
+      saveState(false, false, false, false);
       ['all', 'wanted', 'mine'].forEach(f => {
         const btn = document.getElementById(`market-tab-${f}`);
         if (!btn) return;
@@ -4400,7 +4383,7 @@
       setupAutoSaveHooks();
       if (getNormalizedDatabaseURL()) {
         pullRemoteSharedState(false, true);
-        setInterval(() => pullRemoteSharedState(false, false), 300);
+        setInterval(() => pullRemoteSharedState(false, false), 2000);
       }
       if (state.user) {
         bootAuthenticatedApp();
