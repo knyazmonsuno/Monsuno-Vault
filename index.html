@@ -1599,6 +1599,106 @@
       }
     }
 
+    let activeVerifyModalCharId = null;
+
+    function applyIncomingInstantSnapshot(snapshot) {
+      if (!snapshot || typeof snapshot !== 'object') return;
+      const incomingTs = Number(snapshot.ts || 0);
+      const incomingQueueTs = Number(snapshot.queueTs || incomingTs);
+      if (incomingTs > 0 && incomingTs < lastLocalMutationAt) return;
+
+      let changed = false;
+      if (Array.isArray(snapshot.users) && JSON.stringify(snapshot.users) !== JSON.stringify(state.users)) {
+        state.users = snapshot.users;
+        changed = true;
+      }
+      if (Array.isArray(snapshot.characters)) {
+        const norm = normalizeCharactersArray(snapshot.characters);
+        if (JSON.stringify(norm) !== JSON.stringify(state.characters)) {
+          state.characters = norm;
+          changed = true;
+        }
+      }
+      if (snapshot.userCollections && typeof snapshot.userCollections === 'object') {
+        if (JSON.stringify(snapshot.userCollections) !== JSON.stringify(state.userCollections)) {
+          state.userCollections = snapshot.userCollections;
+          changed = true;
+        }
+      }
+      if (Array.isArray(snapshot.dismissedQueueIds)) {
+        state.dismissedQueueIds = Array.from(new Set([
+          ...(state.dismissedQueueIds || []).map(String),
+          ...snapshot.dismissedQueueIds.map(String)
+        ])).slice(-500);
+      }
+      if (Array.isArray(snapshot.queue) && incomingQueueTs >= lastQueueMutationAt) {
+        const cleaned = deduplicateQueueItems(snapshot.queue, state.dismissedQueueIds);
+        if (JSON.stringify(cleaned) !== JSON.stringify(state.queue)) {
+          state.queue = cleaned;
+          lastQueueMutationAt = Math.max(lastQueueMutationAt, incomingQueueTs);
+          changed = true;
+        }
+      }
+      if (Array.isArray(snapshot.chat) && JSON.stringify(snapshot.chat) !== JSON.stringify(state.chat)) {
+        state.chat = snapshot.chat;
+        changed = true;
+      }
+      if (Array.isArray(snapshot.photoChat) && JSON.stringify(snapshot.photoChat) !== JSON.stringify(state.photoChat)) {
+        state.photoChat = snapshot.photoChat;
+        changed = true;
+      }
+      if (Array.isArray(snapshot.market) && JSON.stringify(snapshot.market) !== JSON.stringify(state.market)) {
+        state.market = snapshot.market;
+        changed = true;
+      }
+      if (Array.isArray(snapshot.tickets) && JSON.stringify(snapshot.tickets) !== JSON.stringify(state.tickets)) {
+        state.tickets = snapshot.tickets;
+        changed = true;
+      }
+      if (Array.isArray(snapshot.reports) && JSON.stringify(snapshot.reports) !== JSON.stringify(state.reports)) {
+        state.reports = snapshot.reports;
+        changed = true;
+      }
+
+      if (changed) {
+        if (incomingTs > lastLocalMutationAt) {
+          lastLocalMutationAt = incomingTs;
+        }
+        refreshAllVisibleViews();
+      }
+    }
+
+    if (instantChannel) {
+      instantChannel.onmessage = (event) => {
+        applyIncomingInstantSnapshot(event.data);
+      };
+    }
+
+    window.addEventListener('storage', (event) => {
+      if (!event.key || !event.key.startsWith('mv3_')) return;
+      if (event.key === 'mv3_user_collections') {
+        state.userCollections = loadJSON('mv3_user_collections', {});
+      } else if (event.key === 'mv3_queue') {
+        state.dismissedQueueIds = loadJSON('mv3_dismissed_queue_ids', state.dismissedQueueIds || []);
+        state.queue = deduplicateQueueItems(loadJSON('mv3_queue', []), state.dismissedQueueIds);
+      } else if (event.key === 'mv3_users') {
+        state.users = loadJSON('mv3_users', state.users);
+      } else if (event.key === STORAGE_KEY_CHARACTERS) {
+        state.characters = loadInitialCharacters();
+      } else if (event.key === 'mv3_chat') {
+        state.chat = loadJSON('mv3_chat', []);
+      } else if (event.key === 'mv3_photo_chat') {
+        state.photoChat = loadJSON('mv3_photo_chat', []);
+      } else if (event.key === 'mv3_market') {
+        state.market = loadJSON('mv3_market', []);
+      } else if (event.key === 'mv3_tickets') {
+        state.tickets = loadJSON('mv3_tickets', []);
+      } else if (event.key === 'mv3_reports') {
+        state.reports = loadJSON('mv3_reports', []);
+      }
+      refreshAllVisibleViews();
+    });
+
     function refreshAllVisibleViews() {
       if (!state.user) return;
       const latestMe = state.users.find(u => u.username.toLowerCase() === state.user.username.toLowerCase());
@@ -1621,12 +1721,17 @@
       if (state.activeSection === 'market') renderMarket();
       if (state.activeSection === 'tickets') renderTickets();
       if (state.activeSection === 'admin' && isOwner(state.user.username)) renderAdmin();
+      const verifyModal = document.getElementById('verify-modal');
+      if (activeVerifyModalCharId && verifyModal && !verifyModal.classList.contains('hidden')) {
+        openVerifyModal(activeVerifyModalCharId);
+      }
     }
 
     function broadcastInstantUpdate() {
       const snapshot = {
         ts: lastLocalMutationAt || Date.now(),
         queueTs: lastQueueMutationAt || lastLocalMutationAt || Date.now(),
+        dismissedQueueIds: Array.isArray(state.dismissedQueueIds) ? state.dismissedQueueIds : [],
         users: state.users,
         characters: normalizeCharactersArray(state.characters),
         userCollections: state.userCollections,
@@ -1700,6 +1805,9 @@
     }
 
     function closeModal(modalId) {
+      if (modalId === 'verify-modal') {
+        activeVerifyModalCharId = null;
+      }
       document.getElementById(modalId)?.classList.add('hidden');
     }
 
@@ -1941,16 +2049,18 @@
               Object.keys(localCharSlots).forEach(sKey => {
                 const localSlot = localCharSlots[sKey];
                 const remoteSlot = remoteCharSlots[sKey];
-                const localTs = Number(localSlot?.revokedAt || localSlot?.approvedAt || localSlot?.submittedAt || 0);
-                const remoteTsSlot = Number(remoteSlot?.revokedAt || remoteSlot?.approvedAt || remoteSlot?.submittedAt || 0);
+                const localTs = Number(localSlot?.rejectedAt || localSlot?.revokedAt || localSlot?.approvedAt || localSlot?.submittedAt || 0);
+                const remoteTsSlot = Number(remoteSlot?.rejectedAt || remoteSlot?.revokedAt || remoteSlot?.approvedAt || remoteSlot?.submittedAt || 0);
 
-                if (localSlot?.status === 'revoked') {
+                if (localSlot?.status === 'rejected' || localSlot?.status === 'revoked') {
                   if (!remoteSlot || remoteTsSlot <= localTs) {
-                    nextCharSlots[sKey] = { status: 'revoked', revokedAt: localTs || Date.now() };
+                    nextCharSlots[sKey] = { ...localSlot };
                   }
-                } else if (remoteSlot?.status === 'revoked' && remoteTsSlot >= localTs) {
+                } else if ((remoteSlot?.status === 'rejected' || remoteSlot?.status === 'revoked') && remoteTsSlot >= localTs) {
                   nextCharSlots[sKey] = remoteSlot;
-                } else if (localSlot?.status === 'approved') {
+                } else if (remoteSlot?.status === 'approved' && remoteTsSlot >= localTs) {
+                  nextCharSlots[sKey] = remoteSlot;
+                } else if (localSlot?.status === 'approved' && localTs >= remoteTsSlot) {
                   nextCharSlots[sKey] = localSlot;
                 }
               });
@@ -2025,6 +2135,10 @@
             if (state.activeSection === 'market') renderMarket();
             if (state.activeSection === 'tickets') renderTickets();
             if (state.activeSection === 'admin' && isOwner(state.user.username)) renderAdmin();
+            const verifyModal = document.getElementById('verify-modal');
+            if (activeVerifyModalCharId && verifyModal && !verifyModal.classList.contains('hidden')) {
+              openVerifyModal(activeVerifyModalCharId);
+            }
           }
         } else if (showAlertOnFirst) {
           showToast('Canlı veritabanı ile eşleşti.');
@@ -2715,6 +2829,7 @@
     function openVerifyModal(charId) {
       const char = state.characters.find(c => c.id === charId);
       if (!char || !state.user) return;
+      activeVerifyModalCharId = charId;
       document.getElementById('verify-modal-title').textContent = `${char.name} — PARÇA DOĞRULAMA`;
       const userKey = state.user.username.toLowerCase();
       const entry = (state.userCollections[userKey] || {})[charId] || {};
@@ -2732,7 +2847,9 @@
           ? '<span class="text-emerald-400 font-bold">Onaylı (✓)</span>'
           : slotData.status === 'pending'
             ? '<span class="text-amber-400 font-bold">Yönetici Onayı Bekliyor</span>'
-            : '<span class="text-slate-400">Henüz Doğrulanmadı</span>';
+            : slotData.status === 'rejected'
+              ? '<span class="text-rose-400 font-bold">Reddedildi — Yeni Fotoğraf Yükleyin</span>'
+              : '<span class="text-slate-400">Henüz Doğrulanmadı</span>';
 
         return `
           <div class="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 space-y-2.5">
@@ -3543,9 +3660,29 @@
       };
       removeResolvedFromQueue(reqId, req);
       saveState(true, false, true);
+      flushRemotePushNow();
       updateStats();
       renderAdmin();
-      showToast('Anında onaylandı ve kuyruktan kaldırıldı!');
+      showToast('Anında onaylandı ve tüm ekranlarda güncellendi!');
+    }
+
+    function rejectQueueItem(reqId) {
+      const req = state.queue.find(r => String(r.id) === String(reqId));
+      if (req) {
+        const userKey = String(req.username || '').trim().toLowerCase();
+        if (!state.userCollections[userKey]) state.userCollections[userKey] = {};
+        if (!state.userCollections[userKey][req.charId]) state.userCollections[userKey][req.charId] = {};
+        state.userCollections[userKey][req.charId][req.slotKey] = {
+          status: 'rejected',
+          rejectedAt: Date.now()
+        };
+      }
+      removeResolvedFromQueue(reqId, req || { id: reqId });
+      saveState(true, false, true);
+      flushRemotePushNow();
+      updateStats();
+      renderAdmin();
+      showToast('Anında reddedildi ve kullanıcının ekranından düşürüldü.');
     }
 
     function rejectQueueItem(reqId) {
