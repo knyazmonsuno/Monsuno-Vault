@@ -1596,7 +1596,7 @@
         users: state.users,
         characters: normalizeCharactersArray(state.characters),
         userCollections: state.userCollections,
-        queue: state.queue,
+        queue: deduplicateQueueItems(state.queue),
         chat: state.chat,
         photoChat: state.photoChat,
         market: state.market,
@@ -1610,10 +1610,42 @@
       }
     }
 
+    function deduplicateQueueItems(items) {
+      if (!Array.isArray(items)) return [];
+      const seenIds = new Set();
+      const seenLogicalKeys = new Set();
+      const uniqueList = [];
+
+      for (const req of items) {
+        if (!req || typeof req !== 'object') continue;
+        const idKey = String(req.id || '').trim();
+        const logicalKey = [
+          String(req.username || '').trim().toLowerCase(),
+          String(req.charId || '').trim(),
+          String(req.slotKey || '').trim()
+        ].join('::');
+
+        if (idKey && seenIds.has(idKey)) continue;
+        if (logicalKey !== '::::' && seenLogicalKeys.has(logicalKey)) continue;
+
+        if (idKey) seenIds.add(idKey);
+        if (logicalKey !== '::::') seenLogicalKeys.add(logicalKey);
+        uniqueList.push(req);
+      }
+
+      return uniqueList;
+    }
+
+    function mergeQueueArrays(localQueue, remoteQueue, preferRemote) {
+      const base = preferRemote
+        ? [...(Array.isArray(remoteQueue) ? remoteQueue : []), ...(Array.isArray(localQueue) ? localQueue : [])]
+        : [...(Array.isArray(localQueue) ? localQueue : []), ...(Array.isArray(remoteQueue) ? remoteQueue : [])];
+      return deduplicateQueueItems(base);
+    }
+
     function applyIncomingSnapshot(snap) {
       if (!snap || typeof snap !== 'object') return;
       const incomingTs = typeof snap.ts === 'number' ? snap.ts : 0;
-      if (incomingTs && incomingTs < lastLocalMutationAt) return;
 
       let changed = false;
       if (Array.isArray(snap.users) && snap.users.length) {
@@ -1639,9 +1671,12 @@
           changed = true;
         }
       }
-      if (Array.isArray(snap.queue) && JSON.stringify(snap.queue) !== JSON.stringify(state.queue)) {
-        state.queue = snap.queue;
-        changed = true;
+      if (Array.isArray(snap.queue)) {
+        const cleanedQueue = deduplicateQueueItems(snap.queue);
+        if (JSON.stringify(cleanedQueue) !== JSON.stringify(state.queue)) {
+          state.queue = cleanedQueue;
+          changed = true;
+        }
       }
       if (Array.isArray(snap.chat) && JSON.stringify(snap.chat) !== JSON.stringify(state.chat)) {
         state.chat = snap.chat;
@@ -1698,7 +1733,7 @@
         state.userCollections = loadJSON('mv3_user_collections', state.userCollections);
         refreshAllVisibleViews();
       } else if (event.key === 'mv3_queue') {
-        state.queue = loadJSON('mv3_queue', state.queue);
+        state.queue = deduplicateQueueItems(loadJSON('mv3_queue', state.queue));
         refreshAllVisibleViews();
       } else if (event.key === 'mv3_users') {
         state.users = loadJSON('mv3_users', state.users);
@@ -1715,6 +1750,71 @@
     function t(key) {
       const lang = TRANSLATIONS[state.lang] ? state.lang : 'tr';
       return TRANSLATIONS[lang]?.[key] || TRANSLATIONS.tr[key] || key;
+    }
+
+    function applyLanguage() {
+      const lang = TRANSLATIONS[state.lang] ? state.lang : 'tr';
+      state.lang = lang;
+      document.documentElement.lang = lang;
+      document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr';
+
+      document.querySelectorAll('[data-i18n]').forEach(el => {
+        const key = el.getAttribute('data-i18n');
+        if (key) el.textContent = t(key);
+      });
+
+      document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+        const key = el.getAttribute('data-i18n-placeholder');
+        if (key) el.setAttribute('placeholder', t(key));
+      });
+
+      ['lang-select-auth', 'lang-select-app'].forEach(id => {
+        const selectEl = document.getElementById(id);
+        if (selectEl && selectEl.value !== lang) {
+          selectEl.value = lang;
+        }
+      });
+    }
+
+    let toastTimer = null;
+    function showToast(message) {
+      const box = document.getElementById('toast-box');
+      if (!box) return;
+      box.textContent = String(message || '');
+      box.classList.remove('hidden');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => {
+        box.classList.add('hidden');
+      }, 3000);
+    }
+
+    function openModal(modalId) {
+      document.getElementById(modalId)?.classList.remove('hidden');
+    }
+
+    function closeModal(modalId) {
+      document.getElementById(modalId)?.classList.add('hidden');
+    }
+
+    function openPhotoLightbox(reqId) {
+      const req = state.queue.find(r => r.id === reqId);
+      if (!req || !req.photo) return;
+      const modal = document.getElementById('photo-lightbox-modal');
+      const img = document.getElementById('lightbox-image');
+      const title = document.getElementById('lightbox-title');
+      const subtitle = document.getElementById('lightbox-subtitle');
+      if (!modal || !img) return;
+      img.src = req.photo;
+      if (title) title.textContent = `${req.charName || 'MONSUNO'} — ${req.slotLabel || 'DOĞRULAMA'}`;
+      if (subtitle) subtitle.textContent = `${req.displayName || ''} (@${req.username || ''})`;
+      modal.classList.remove('hidden');
+    }
+
+    function closePhotoLightbox() {
+      const modal = document.getElementById('photo-lightbox-modal');
+      const img = document.getElementById('lightbox-image');
+      if (img) img.src = '';
+      modal?.classList.add('hidden');
     }
 
     function getNormalizedDatabaseURL() {
@@ -1739,6 +1839,7 @@
     function buildSharedPayload() {
       const normalizedChars = normalizeCharactersArray(state.characters);
       state.characters = normalizedChars;
+      state.queue = deduplicateQueueItems(state.queue);
       return {
         updatedAt: lastLocalMutationAt || Date.now(),
         users: state.users,
@@ -1870,7 +1971,6 @@
     async function pullRemoteSharedState(showAlertOnFirst = false, forceInitial = false) {
       const dbUrl = getNormalizedDatabaseURL();
       if (!dbUrl || isPullingRemote) return;
-      if (!forceInitial && Date.now() - lastLocalMutationAt < 2500) return;
       isPullingRemote = true;
       try {
         const dedicatedCharsUpdated = await pullCharactersDedicated();
@@ -1882,19 +1982,17 @@
         updateLiveSyncButton(true);
         const remote = await res.json();
         if (!remote || typeof remote !== 'object') {
-          if (state.characters.length > 0 || state.users.length > 1) {
+          if (state.characters.length > 0 || state.users.length > 1 || state.queue.length > 0) {
             scheduleRemotePush();
           }
           return;
         }
 
         const remoteTs = typeof remote.updatedAt === 'number' ? remote.updatedAt : 0;
-        if (remoteTs < lastLocalMutationAt) {
-          return;
-        }
+        const localIsNewer = !forceInitial && remoteTs > 0 && remoteTs < lastLocalMutationAt;
 
         let changed = dedicatedCharsUpdated;
-        if (Array.isArray(remote.users) && remote.users.length) {
+        if (!localIsNewer && Array.isArray(remote.users) && remote.users.length) {
           let mergedUsers = remote.users.slice();
           if (!mergedUsers.some(u => (u.username || '').toLowerCase() === OWNER_USERNAME)) {
             mergedUsers.unshift({ ...DEFAULT_OWNER_USER });
@@ -1904,7 +2002,7 @@
             changed = true;
           }
         }
-        if (!dedicatedCharsUpdated && Array.isArray(remote.characters) && remote.characters.length > 0) {
+        if (!localIsNewer && !dedicatedCharsUpdated && Array.isArray(remote.characters) && remote.characters.length > 0) {
           const normalizedRemoteChars = normalizeCharactersArray(remote.characters);
           if (JSON.stringify(normalizedRemoteChars) !== JSON.stringify(state.characters)) {
             state.characters = normalizedRemoteChars;
@@ -1935,27 +2033,33 @@
             changed = true;
           }
         }
-        if (Array.isArray(remote.queue) && JSON.stringify(remote.queue) !== JSON.stringify(state.queue)) {
-          state.queue = remote.queue;
-          changed = true;
+        if (Array.isArray(remote.queue)) {
+          const cleanedRemoteQueue = deduplicateQueueItems(remote.queue);
+          const mergedQueue = forceInitial || remoteTs >= lastLocalMutationAt
+            ? cleanedRemoteQueue
+            : mergeQueueArrays(state.queue, cleanedRemoteQueue, false);
+          if (JSON.stringify(mergedQueue) !== JSON.stringify(state.queue)) {
+            state.queue = mergedQueue;
+            changed = true;
+          }
         }
-        if (Array.isArray(remote.chat) && JSON.stringify(remote.chat) !== JSON.stringify(state.chat)) {
+        if (!localIsNewer && Array.isArray(remote.chat) && JSON.stringify(remote.chat) !== JSON.stringify(state.chat)) {
           state.chat = remote.chat;
           changed = true;
         }
-        if (Array.isArray(remote.photoChat) && JSON.stringify(remote.photoChat) !== JSON.stringify(state.photoChat)) {
+        if (!localIsNewer && Array.isArray(remote.photoChat) && JSON.stringify(remote.photoChat) !== JSON.stringify(state.photoChat)) {
           state.photoChat = remote.photoChat;
           changed = true;
         }
-        if (Array.isArray(remote.market) && JSON.stringify(remote.market) !== JSON.stringify(state.market)) {
+        if (!localIsNewer && Array.isArray(remote.market) && JSON.stringify(remote.market) !== JSON.stringify(state.market)) {
           state.market = remote.market;
           changed = true;
         }
-        if (Array.isArray(remote.tickets) && JSON.stringify(remote.tickets) !== JSON.stringify(state.tickets)) {
+        if (!localIsNewer && Array.isArray(remote.tickets) && JSON.stringify(remote.tickets) !== JSON.stringify(state.tickets)) {
           state.tickets = remote.tickets;
           changed = true;
         }
-        if (Array.isArray(remote.reports) && JSON.stringify(remote.reports) !== JSON.stringify(state.reports)) {
+        if (!localIsNewer && Array.isArray(remote.reports) && JSON.stringify(remote.reports) !== JSON.stringify(state.reports)) {
           state.reports = remote.reports;
           changed = true;
         }
@@ -2171,6 +2275,7 @@
     function saveState(syncRemote = true, syncChars = false) {
       markLocalMutation();
       persistCharactersNow(state.characters);
+      state.queue = deduplicateQueueItems(state.queue);
       try {
         localStorage.setItem('mv3_lang', state.lang);
         localStorage.setItem('mv3_current_user', JSON.stringify(state.user));
@@ -2227,68 +2332,73 @@
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
     }
 
-    function showToast(msg) {
-      const box = document.getElementById('toast-box');
-      if (!box) return;
-      box.textContent = msg;
-      box.classList.remove('hidden');
-      clearTimeout(window.__toastTimer);
-      window.__toastTimer = setTimeout(() => box.classList.add('hidden'), 3000);
-    }
+    let isSubmittingVerification = false;
 
-    function openModal(id) {
-      document.getElementById(id)?.classList.remove('hidden');
-    }
+    function submitSlotVerification(charId, slotKey, slotLabel) {
+      if (isSubmittingVerification) return;
+      const char = state.characters.find(c => c.id === charId);
+      if (!char || !state.user) return;
 
-    function closeModal(id) {
-      document.getElementById(id)?.classList.add('hidden');
-    }
+      const userKey = state.user.username.toLowerCase();
+      if (!state.userCollections[userKey]) state.userCollections[userKey] = {};
+      if (!state.userCollections[userKey][charId]) state.userCollections[userKey][charId] = {};
 
-    function openPhotoLightbox(reqId) {
-      const req = state.queue.find(r => r.id === reqId);
-      if (!req || !req.photo) return;
-      document.getElementById('lightbox-title').textContent = `${req.charName} — ${req.slotLabel}`;
-      document.getElementById('lightbox-subtitle').textContent = `Gönderen: ${req.displayName} (@${req.username})`;
-      document.getElementById('lightbox-image').src = req.photo;
-      openModal('photo-lightbox-modal');
-    }
-
-    function closePhotoLightbox() {
-      closeModal('photo-lightbox-modal');
-      const img = document.getElementById('lightbox-image');
-      if (img) img.src = '';
-    }
-
-    document.addEventListener('keydown', (event) => {
-      if (event.key === 'Escape') {
-        const lightbox = document.getElementById('photo-lightbox-modal');
-        if (lightbox && !lightbox.classList.contains('hidden')) {
-          closePhotoLightbox();
-        }
+      if (isOwner(state.user.username)) {
+        state.userCollections[userKey][charId][slotKey] = { status: 'approved', photo: null, approvedAt: Date.now() };
+        state.queue = state.queue.filter(
+          r => !(r.username.toLowerCase() === userKey && r.charId === charId && r.slotKey === slotKey)
+        );
+        saveState(true);
+        flushRemotePushNow();
+        updateStats();
+        renderCollection();
+        openVerifyModal(charId);
+        showToast(`${char.name} (${slotLabel}) anında onaylandı ve kaydedildi!`);
+        return;
       }
-    });
 
-    function applyLanguage() {
-      const lang = TRANSLATIONS[state.lang] ? state.lang : 'tr';
-      const dict = TRANSLATIONS[lang];
-      document.documentElement.lang = lang;
-      document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr';
+      const fileInput = document.getElementById(`verify-file-${slotKey}`);
+      const file = fileInput?.files?.[0];
+      if (!file) {
+        showToast('Lütfen doğrulama için bir fotoğraf seçin.');
+        return;
+      }
 
-      const authSel = document.getElementById('lang-select-auth');
-      const appSel = document.getElementById('lang-select-app');
-      if (authSel) authSel.value = lang;
-      if (appSel) appSel.value = lang;
-
-      document.querySelectorAll('[data-i18n]').forEach(el => {
-        const key = el.getAttribute('data-i18n');
-        if (dict[key]) el.textContent = dict[key];
-      });
-      document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
-        const key = el.getAttribute('data-i18n-placeholder');
-        if (dict[key]) el.setAttribute('placeholder', dict[key]);
+      isSubmittingVerification = true;
+      compressImageFile(file, 640, 0.8).then(photoData => {
+        if (!photoData) return;
+        const reqId = 'req-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
+        state.userCollections[userKey][charId][slotKey] = { status: 'pending', photo: photoData };
+        state.queue = [
+          {
+            id: reqId,
+            username: state.user.username,
+            displayName: state.user.displayName,
+            charId,
+            charName: char.name,
+            slotKey,
+            slotLabel,
+            photo: photoData,
+            submittedAt: Date.now()
+          },
+          ...state.queue.filter(
+            r => !(r.username.toLowerCase() === userKey && r.charId === charId && r.slotKey === slotKey)
+          )
+        ];
+        state.queue = deduplicateQueueItems(state.queue);
+        if (fileInput) fileInput.value = '';
+        saveState(true);
+        flushRemotePushNow();
+        updateStats();
+        renderCollection();
+        openVerifyModal(charId);
+        showToast('Fotoğraf site yöneticisine onaya gönderildi.');
+      }).finally(() => {
+        isSubmittingVerification = false;
       });
     }
 
@@ -3286,6 +3396,7 @@
 
     function renderAdmin() {
       if (!isOwner(state.user?.username)) return;
+      state.queue = deduplicateQueueItems(state.queue);
 
       const queueGrid = document.getElementById('admin-queue-grid');
       if (queueGrid) {
@@ -3632,12 +3743,13 @@
     }
 
     function initApp() {
+      state.queue = deduplicateQueueItems(state.queue);
       applyLanguage();
       updateLiveSyncButton(Boolean(getNormalizedDatabaseURL()));
       setupAutoSaveHooks();
       if (getNormalizedDatabaseURL()) {
         pullRemoteSharedState(false, true);
-        setInterval(() => pullRemoteSharedState(false, false), 750);
+        setInterval(() => pullRemoteSharedState(false, false), 450);
       }
       if (state.user) {
         bootAuthenticatedApp();
