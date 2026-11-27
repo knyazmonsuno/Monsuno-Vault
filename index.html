@@ -175,6 +175,10 @@
             class="nav-btn shrink-0 px-3 sm:px-3.5 py-2.5 sm:py-2 rounded-xl text-xs font-extrabold bg-core-600 text-white transition">
             Koleksiyonum
           </button>
+          <button id="nav-ticked" type="button" onclick="switchSection('ticked')" data-i18n="navTicked"
+            class="nav-btn shrink-0 px-3 sm:px-3.5 py-2.5 sm:py-2 rounded-xl text-xs font-semibold bg-slate-900 text-slate-300 hover:text-white border border-slate-800 transition">
+            Tiklenenler
+          </button>
           <button id="nav-chat" type="button" onclick="switchSection('chat')" data-i18n="navChat"
             class="nav-btn shrink-0 px-3 sm:px-3.5 py-2.5 sm:py-2 rounded-xl text-xs font-semibold bg-slate-900 text-slate-300 hover:text-white border border-slate-800 transition">
             Global Chat
@@ -296,6 +300,32 @@
         </div>
 
         <div id="collection-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5"></div>
+      </section>
+
+      <!-- TİKLENENLER BÖLÜMÜ (TAMAMLANAN MONSUNO'LAR VE TEK TİK BİLE ATILAN PARÇALAR) -->
+      <section id="section-ticked" class="hidden space-y-5">
+        <div class="glass-panel rounded-3xl p-4 sm:p-6 border border-slate-800/90 space-y-4">
+          <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            <div>
+              <h2 data-i18n="tickedTitle" class="font-display font-extrabold text-lg sm:text-xl text-white">TİKLENEN MONSUNO'LAR &amp; PARÇALAR</h2>
+              <p data-i18n="tickedSubtitle" class="text-xs text-slate-400 mt-1">
+                Sadece onaylı tik attığın karakterleri ve tek bir parçasına bile tik atılmış Monsuno ürünlerini burada görüntüleyebilirsin.
+              </p>
+            </div>
+            <div class="flex flex-wrap items-center gap-2.5">
+              <div class="px-3.5 py-2 rounded-2xl bg-slate-950 border border-slate-800 text-xs">
+                <span data-i18n="tickedFullMonsunoLabel" class="text-slate-400">Tamamlanan Monsuno:</span>
+                <strong id="stat-ticked-full-count" class="text-emerald-400 font-extrabold ml-1">0</strong>
+              </div>
+              <div class="px-3.5 py-2 rounded-2xl bg-slate-950 border border-slate-800 text-xs">
+                <span data-i18n="tickedPartialMonsunoLabel" class="text-slate-400">Tikli Monsuno / Parça:</span>
+                <strong id="stat-ticked-any-count" class="text-core-400 font-extrabold ml-1">0</strong>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div id="ticked-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5"></div>
       </section>
 
       <!-- GLOBAL CHAT BÖLÜMÜ -->
@@ -708,6 +738,7 @@
         languageLabel: 'Dil / Language',
         headerSub: 'Koleksiyon • Chat • Pazar',
         navCollection: 'Koleksiyonum',
+        navTicked: 'Tiklenenler',
         navChat: 'Global Chat',
         navPhotoChat: 'Foto Chat',
         navLeaderboard: 'Liderlik',
@@ -731,6 +762,13 @@
         slotCards: 'Cards',
         slotNone: 'YOK',
         noCharFound: 'Aramanıza uygun karakter bulunamadı.',
+        tickedTitle: 'TİKLENEN MONSUNO\'LAR & PARÇALAR',
+        tickedSubtitle: 'Sadece onaylı tik attığın karakterleri ve tek bir parçasına bile tik atılmış Monsuno ürünlerini burada görüntüleyebilirsin.',
+        tickedFullMonsunoLabel: 'Tamamlanan Monsuno:',
+        tickedPartialMonsunoLabel: 'Tikli Monsuno / Parça:',
+        noTickedFound: 'Henüz tiklediğiniz hiçbir Monsuno veya parça bulunmuyor.',
+        tickedCompleteBadge: 'TAMAMLANDI (3/3)',
+        tickedSingleBadge: 'TEK TİK / KISMİ',
         chatTitle: 'GLOBAL KOLEKSİYONER SOHBETİ',
         chatSubtitle: 'Kullanıcı adına tıklayarak profilini ve koleksiyon tamamlama oranını inceleyebilirsin.',
         chatInputPlaceholder: 'Koleksiyonculara mesaj yaz...',
@@ -806,6 +844,7 @@
         languageLabel: 'Language',
         headerSub: 'Collection • Chat • Market',
         navCollection: 'My Collection',
+        navTicked: 'Ticked Items',
         navChat: 'Global Chat',
         navPhotoChat: 'Photo Chat',
         navLeaderboard: 'Leaderboard',
@@ -829,6 +868,13 @@
         slotCards: 'Cards',
         slotNone: 'NONE',
         noCharFound: 'No characters matched your search.',
+        tickedTitle: 'TICKED MONSUNOS & PARTS',
+        tickedSubtitle: 'View only the Monsunos you completed and any Monsuno item with at least one approved tick.',
+        tickedFullMonsunoLabel: 'Completed Monsunos:',
+        tickedPartialMonsunoLabel: 'Ticked Monsunos:',
+        noTickedFound: 'You have not ticked any Monsuno or part yet.',
+        tickedCompleteBadge: 'COMPLETED',
+        tickedSingleBadge: 'SINGLE / PARTIAL TICK',
         chatTitle: 'GLOBAL COLLECTOR CHAT',
         chatSubtitle: 'Click on any username to view their profile and collection progress.',
         chatInputPlaceholder: 'Write a message to collectors...',
@@ -1800,6 +1846,7 @@
       }
       updateStats();
       if (state.activeSection === 'collection') renderCollection();
+      if (state.activeSection === 'ticked') renderTickedSection();
       if (state.activeSection === 'chat') renderChat();
       if (state.activeSection === 'photo-chat') renderPhotoChat();
       if (state.activeSection === 'leaderboard') renderLeaderboard();
@@ -2295,7 +2342,8 @@
             }
             updateStats();
             if (state.activeSection === 'collection') renderCollection();
-            if (state.activeSection === 'chat') renderChat();
+      if (state.activeSection === 'ticked') renderTickedSection();
+      if (state.activeSection === 'chat') renderChat();
             if (state.activeSection === 'photo-chat') renderPhotoChat();
             if (state.activeSection === 'leaderboard') renderLeaderboard();
             if (state.activeSection === 'market') renderMarket();
@@ -2838,7 +2886,7 @@
     function switchSection(sec) {
       state.activeSection = sec;
       saveState(false);
-      const sections = ['collection', 'chat', 'photo-chat', 'leaderboard', 'market', 'tickets', 'support', 'admin'];
+      const sections = ['collection', 'ticked', 'chat', 'photo-chat', 'leaderboard', 'market', 'tickets', 'support', 'admin'];
       sections.forEach(s => {
         document.getElementById(`section-${s}`)?.classList.toggle('hidden', s !== sec);
         const btn = document.getElementById(`nav-${s}`);
@@ -2857,107 +2905,9 @@
       });
 
       if (sec === 'collection') renderCollection();
+      if (sec === 'ticked') renderTickedSection();
       if (sec === 'chat') renderChat();
-      if (sec === 'photo-chat') renderPhotoChat();
-      if (sec === 'leaderboard') renderLeaderboard();
-      if (sec === 'market') renderMarket();
-      if (sec === 'tickets') renderTickets();
-      if (sec === 'admin') renderAdmin();
-    }
-
-    function setFactionFilter(faction) {
-      state.activeFactionFilter = faction;
-      saveState(false);
-      document.querySelectorAll('.faction-filter-btn').forEach(btn => {
-        const f = btn.getAttribute('data-faction');
-        if (f === faction) {
-          btn.classList.add('ring-2', 'ring-white');
-        } else {
-          btn.classList.remove('ring-2', 'ring-white');
-        }
-      });
-      renderCollection();
-    }
-
-    function renderSlotHex(label, slotData, isNone) {
-      const approved = slotData?.status === 'approved';
-      const pending = slotData?.status === 'pending';
-      let badgeClasses = 'bg-slate-800/90 text-slate-400 border border-slate-700';
-      let iconText = '•';
-
-      if (isNone) {
-        badgeClasses = 'bg-slate-900/80 text-slate-500 border border-slate-800';
-        iconText = '✕';
-      } else if (approved) {
-        badgeClasses = 'bg-emerald-500/25 text-emerald-300 border border-emerald-400/60';
-        iconText = '✓';
-      } else if (pending) {
-        badgeClasses = 'bg-amber-500/25 text-amber-300 border border-amber-400/60';
-        iconText = '⏳';
-      }
-
-      return `
-        <div class="flex flex-col items-center gap-1">
-          <div class="w-9 h-9 hex-badge ${badgeClasses} flex items-center justify-center text-xs font-black">
-            ${iconText}
-          </div>
-          <span class="text-[10px] font-bold text-slate-300">${escapeHTML(isNone ? t('slotNone') : label)}</span>
-        </div>
-      `;
-    }
-
-    function normalizeSearchText(str) {
-      return String(str || '')
-        .toLocaleLowerCase('tr')
-        .normalize('NFKD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .replace(/ı/g, 'i')
-        .replace(/[^a-z0-9\s-]/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim();
-    }
-
-    function matchesCharacterSearch(char, rawQuery) {
-      const q = normalizeSearchText(rawQuery);
-      if (!q) return true;
-
-      const nameNorm = normalizeSearchText(char.name);
-      const factionNorm = normalizeSearchText(char.faction);
-      const nameCompact = nameNorm.replace(/[\s-]/g, '');
-      const factionCompact = factionNorm.replace(/[\s-]/g, '');
-      const qCompact = q.replace(/[\s-]/g, '');
-
-      if (
-        nameNorm.includes(q) ||
-        nameCompact.includes(qCompact) ||
-        factionNorm.includes(q) ||
-        factionCompact.includes(qCompact)
-      ) {
-        return true;
-      }
-
-      const tokens = q.split(' ').filter(Boolean);
-      const combined = `${nameNorm} ${factionNorm}`;
-      return tokens.length > 0 && tokens.every(tok => combined.includes(tok));
-    }
-
-    function renderCollection() {
-      const grid = document.getElementById('collection-grid');
-      if (!grid || !state.user) return;
-      const query = document.getElementById('collection-search')?.value || '';
-      const userCol = state.userCollections[state.user.username.toLowerCase()] || {};
-
-      const filtered = state.characters.filter(c => {
-        const matchFaction = state.activeFactionFilter === 'ALL' || c.faction === state.activeFactionFilter;
-        const matchQuery = matchesCharacterSearch(c, query);
-        return matchFaction && matchQuery;
-      });
-
-      if (!filtered.length) {
-        grid.innerHTML = `<div class="col-span-full text-center py-10 text-xs text-slate-400">${escapeHTML(t('noCharFound'))}</div>`;
-        return;
-      }
-
+<!-- ... existing ... -->
       grid.innerHTML = filtered.map(char => {
         const style = FACTION_STYLES[char.faction] || FACTION_STYLES['Core-Tech'];
         const entry = userCol[char.id] || {};
@@ -2967,6 +2917,75 @@
             <div class="w-full flex items-center justify-between text-[11px]">
               <span class="font-bold ${style.badgeText}">${escapeHTML(char.faction)}</span>
               <span class="text-slate-400">${escapeHTML(t('verifyOrEdit'))}</span>
+            </div>
+
+            <div class="w-36 h-36 hex-main bg-slate-900/90 p-1.5 shadow-inner flex items-center justify-center">
+              <img src="${escapeHTML(char.image)}" alt="${escapeHTML(char.name)}"
+                onerror="this.src='https://placehold.co/320x320/0f172a/38bdf8?text=${encodeURIComponent(char.name)}'"
+                class="w-full h-full object-cover hex-main" />
+            </div>
+
+            <div class="w-full flex items-center justify-around pt-1">
+              ${renderSlotHex(t('slotFigure'), entry.figure, false)}
+              ${renderSlotHex(t('slotCapsule'), entry.capsule, Boolean(char.noCapsule))}
+              ${renderSlotHex(t('slotCards'), entry.cards, false)}
+            </div>
+
+            <div class="w-full rounded-xl overflow-hidden flex items-center border border-slate-700/80 bg-slate-900">
+              <div class="w-8 h-8 ${style.plateBg} flex items-center justify-center font-display font-black text-xs">
+                M
+              </div>
+              <div class="flex-1 text-center font-display font-black text-xs tracking-wider text-white py-2">
+                ${escapeHTML(char.name)}
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    // Sadece en az 1 onaylı tiki bulunan karakterleri ve tamamlanan Monsuno'ları listeler
+    function renderTickedSection() {
+      const grid = document.getElementById('ticked-grid');
+      if (!grid || !state.user) return;
+      const userCol = state.userCollections[state.user.username.toLowerCase()] || {};
+
+      const tickedItems = [];
+      let fullCount = 0;
+
+      state.characters.forEach(char => {
+        const entry = userCol[char.id] || {};
+        const reqSlots = char.noCapsule ? ['figure', 'cards'] : ['figure', 'capsule', 'cards'];
+        const approvedCount = reqSlots.filter(s => entry[s]?.status === 'approved').length;
+        if (approvedCount > 0) {
+          const isComplete = approvedCount === reqSlots.length;
+          if (isComplete) fullCount += 1;
+          tickedItems.push({ char, entry, approvedCount, totalSlots: reqSlots.length, isComplete });
+        }
+      });
+
+      const fullEl = document.getElementById('stat-ticked-full-count');
+      const anyEl = document.getElementById('stat-ticked-any-count');
+      if (fullEl) fullEl.textContent = String(fullCount);
+      if (anyEl) anyEl.textContent = String(tickedItems.length);
+
+      if (!tickedItems.length) {
+        grid.innerHTML = `<div class="col-span-full text-center py-10 text-xs text-slate-400">${escapeHTML(t('noTickedFound'))}</div>`;
+        return;
+      }
+
+      grid.innerHTML = tickedItems.map(({ char, entry, approvedCount, totalSlots, isComplete }) => {
+        const style = FACTION_STYLES[char.faction] || FACTION_STYLES['Core-Tech'];
+        const badgeHtml = isComplete
+          ? `<span class="px-2 py-0.5 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[10px] font-extrabold">${escapeHTML(t('tickedCompleteBadge'))}</span>`
+          : `<span class="px-2 py-0.5 rounded-lg bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-extrabold">${approvedCount}/${totalSlots} ${escapeHTML(t('tickedSingleBadge'))}</span>`;
+
+        return `
+          <div onclick="openVerifyModal('${char.id}')"
+            class="cursor-pointer rounded-3xl p-4 border ${style.cardBg} hover:scale-[1.01] transition shadow-xl flex flex-col items-center justify-between gap-3">
+            <div class="w-full flex items-center justify-between gap-2 text-[11px]">
+              <span class="font-bold ${style.badgeText}">${escapeHTML(char.faction)}</span>
+              ${badgeHtml}
             </div>
 
             <div class="w-36 h-36 hex-main bg-slate-900/90 p-1.5 shadow-inner flex items-center justify-center">
@@ -3641,10 +3660,16 @@
               </div>
             </div>
             ${!ownerAcc ? `
-              <button type="button" onclick="toggleUserBan('${escapeHTML(u.username)}')"
-                class="px-3 py-1.5 rounded-xl text-xs font-bold ${u.banned ? 'bg-emerald-500/20 text-emerald-300' : 'bg-rose-500/20 text-rose-300'}">
-                ${u.banned ? 'Ban Kaldır' : 'Banla'}
-              </button>
+              <div class="flex items-center gap-1.5 shrink-0">
+                <button type="button" onclick="toggleUserBan('${escapeHTML(u.username)}')"
+                  class="px-3 py-1.5 rounded-xl text-xs font-bold ${u.banned ? 'bg-emerald-500/20 text-emerald-300' : 'bg-rose-500/20 text-rose-300'}">
+                  ${u.banned ? 'Ban Kaldır' : 'Banla'}
+                </button>
+                <button type="button" onclick="deleteUserAccount('${escapeHTML(u.username)}')"
+                  class="px-3 py-1.5 rounded-xl text-xs font-extrabold bg-rose-600 hover:bg-rose-500 text-white transition">
+                  Hesabı Sil
+                </button>
+              </div>
             ` : ''}
           </div>
         `;
@@ -3864,13 +3889,38 @@
       showToast(target.banned ? `${target.displayName} banlandı.` : `${target.displayName} banı kaldırıldı.`);
     }
 
-    function closeTicket(id) {
-      const t = state.tickets.find(item => item.id === id);
-      if (!t) return;
-      t.status = 'Çözüldü';
-      saveState(true);
+    // Yöneticiye kayıtlı hesapları ve ilgili kullanıcı verilerini kalıcı olarak silme yetkisi verir
+    function deleteUserAccount(username) {
+      if (!isOwner(state.user?.username)) return;
+      const target = state.users.find(u => u.username.toLowerCase() === username.toLowerCase());
+      if (!target || isOwner(target.username)) return;
+
+      const userKey = String(target.username || '').trim().toLowerCase();
+      const deletedDisplayName = target.displayName || target.username;
+
+      state.users = state.users.filter(u => u.username.toLowerCase() !== userKey);
+      if (state.userCollections && typeof state.userCollections === 'object') {
+        delete state.userCollections[userKey];
+      }
+      if (state.slotDecisions && typeof state.slotDecisions === 'object') {
+        Object.keys(state.slotDecisions).forEach(k => {
+          if (k.startsWith(`${userKey}::`)) {
+            delete state.slotDecisions[k];
+          }
+        });
+      }
+      state.queue = (state.queue || []).filter(r => (r.username || '').toLowerCase() !== userKey);
+      state.chat = (state.chat || []).filter(m => (m.username || '').toLowerCase() !== userKey);
+      state.photoChat = (state.photoChat || []).filter(p => (p.username || '').toLowerCase() !== userKey);
+      state.market = (state.market || []).filter(l => (l.ownerUsername || '').toLowerCase() !== userKey);
+      state.tickets = (state.tickets || []).filter(t => (t.username || '').toLowerCase() !== userKey);
+
+      saveState(true, false, true);
+      flushRemotePushNow();
       updateStats();
       renderAdmin();
+      renderLeaderboard();
+      showToast(`${deletedDisplayName} (@${target.username}) hesabı ve verileri kalıcı olarak silindi.`);
     }
 
     function openUserInspectModal(username) {
