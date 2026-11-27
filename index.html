@@ -326,14 +326,14 @@
 
           <!-- Koleksiyonum Arama ve Durum Filtreleri -->
           <div class="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 pt-2 border-t border-slate-800/80">
-            <input id="ticked-search" type="text" oninput="renderTickedSection()" placeholder="Koleksiyonumda ara (örn: LOCK)..."
+            <input id="ticked-search" type="text" oninput="renderTickedSection()" data-i18n-placeholder="searchTickedPlaceholder" placeholder="Koleksiyonumda ara (örn: LOCK)..."
               class="w-full md:w-72 px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-core-400" />
             <div class="flex flex-wrap items-center gap-1.5">
-              <button id="ticked-filter-all" type="button" onclick="setTickedFilter('all')"
+              <button id="ticked-filter-all" type="button" onclick="setTickedFilter('all')" data-i18n="tickedFilterAll"
                 class="px-3 py-1.5 rounded-xl text-xs font-extrabold bg-core-600 text-white transition">Tümü</button>
-              <button id="ticked-filter-full" type="button" onclick="setTickedFilter('full')"
+              <button id="ticked-filter-full" type="button" onclick="setTickedFilter('full')" data-i18n="tickedFilterFull"
                 class="px-3 py-1.5 rounded-xl text-xs font-semibold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 transition">Tamamlanan (3/3)</button>
-              <button id="ticked-filter-partial" type="button" onclick="setTickedFilter('partial')"
+              <button id="ticked-filter-partial" type="button" onclick="setTickedFilter('partial')" data-i18n="tickedFilterPartial"
                 class="px-3 py-1.5 rounded-xl text-xs font-semibold bg-amber-500/15 text-amber-300 border border-amber-500/30 transition">Kısmi Onaylı</button>
             </div>
           </div>
@@ -780,6 +780,10 @@
         tickedSubtitle: 'Vitrinden onay alan karakterlerini ve en az bir parçası onaylanmış Monsuno ürünlerini burada görebilirsin.',
         tickedFullMonsunoLabel: 'Tamamlanan Monsuno:',
         tickedPartialMonsunoLabel: 'Koleksiyondaki Monsuno:',
+        searchTickedPlaceholder: 'Koleksiyonumda ara (örn: LOCK)...',
+        tickedFilterAll: 'Tümü',
+        tickedFilterFull: 'Tamamlanan (3/3)',
+        tickedFilterPartial: 'Kısmi Onaylı',
         noTickedFound: 'Henüz onaylanmış hiçbir Monsuno veya parçanız bulunmuyor.',
         tickedCompleteBadge: 'TAMAMLANDI (3/3)',
         tickedSingleBadge: 'ONAYLI PARÇA',
@@ -886,6 +890,10 @@
         tickedSubtitle: 'View only the Monsunos you completed and any Monsuno item with at least one approved part.',
         tickedFullMonsunoLabel: 'Completed Monsunos:',
         tickedPartialMonsunoLabel: 'Monsunos in Collection:',
+        searchTickedPlaceholder: 'Search my collection (e.g. LOCK)...',
+        tickedFilterAll: 'All',
+        tickedFilterFull: 'Completed (3/3)',
+        tickedFilterPartial: 'Partially Approved',
         noTickedFound: 'You do not have any approved Monsuno or part in your collection yet.',
         tickedCompleteBadge: 'COMPLETED',
         tickedSingleBadge: 'APPROVED PART',
@@ -964,6 +972,7 @@
         languageLabel: 'Sprache',
         headerSub: 'Sammlung • Chat • Markt',
         navCollection: 'Meine Sammlung',
+        navTicked: 'Meine Kollektion',
         navChat: 'Globaler Chat',
         navPhotoChat: 'Foto-Chat',
         navLeaderboard: 'Bestenliste',
@@ -987,17 +996,17 @@
         slotCards: 'Cards',
         slotNone: 'KEINE',
         noCharFound: 'Keine passenden Charaktere gefunden.',
-        chatTitle: 'GLOBALER SAMMLER-CHAT',
-        chatSubtitle: 'Klicke auf einen Benutzernamen, um Profil und Sammlungsfortschritt zu sehen.',
-        chatInputPlaceholder: 'Nachricht an Sammler schreiben...',
-        sendBtn: 'Senden',
-        noChatMsg: 'Noch keine Nachrichten. Schreib die erste!',
-        deleteBtn: 'Löschen',
-        translateBtn: 'Übersetzen',
-        hideTranslationBtn: 'Übersetzung ausblenden',
-        translatingText: 'Wird übersetzt...',
-        translatedBadge: 'Übersetzung',
-        photoChatTitle: 'GLOBALER FOTO-CHAT',
+        tickedTitle: 'MEINE KOLLEKTION (BESTÄTIGTE MONSUNOS & TEILE)',
+        tickedSubtitle: 'Zeige abgeschlossene Monsunos sowie Monsunos mit mindestens einem bestätigten Teil an.',
+        tickedFullMonsunoLabel: 'Abgeschlossene Monsunos:',
+        tickedPartialMonsunoLabel: 'Monsunos in Kollektion:',
+        searchTickedPlaceholder: 'In Kollektion suchen (z. B. LOCK)...',
+        tickedFilterAll: 'Alle',
+        tickedFilterFull: 'Abgeschlossen (3/3)',
+        tickedFilterPartial: 'Teilweise bestätigt',
+        noTickedFound: 'Du hast noch keine bestätigten Monsunos oder Teile in deiner Kollektion.',
+        tickedCompleteBadge: 'ABGESCHLOSSEN',
+        tickedSingleBadge: 'BESTÄTIGTES TEIL',
         photoChatSubtitle: 'Teile Fotos von Figuren, Kapseln und Karten mit der Community.',
         photoChatPlaceholder: 'Fotobeschreibung...',
         sharePhotoBtn: 'Foto teilen',
@@ -1062,6 +1071,7 @@
         languageLabel: 'Язык',
         headerSub: 'Коллекция • Чат • Рынок',
         navCollection: 'Моя коллекция',
+        navTicked: 'Моя подборка',
         navChat: 'Общий чат',
         navPhotoChat: 'Фото-чат',
         navLeaderboard: 'Рейтинг',
@@ -1085,17 +1095,17 @@
         slotCards: 'Cards',
         slotNone: 'НЕТ',
         noCharFound: 'Персонажи по запросу не найдены.',
-        chatTitle: 'ОБЩИЙ ЧАТ КОЛЛЕКЦИОНЕРОВ',
-        chatSubtitle: 'Нажмите на имя пользователя, чтобы открыть профиль и прогресс коллекции.',
-        chatInputPlaceholder: 'Напишите сообщение коллекционерам...',
-        sendBtn: 'Отправить',
-        noChatMsg: 'Сообщений пока нет. Напишите первым!',
-        deleteBtn: 'Удалить',
-        translateBtn: 'Перевести',
-        hideTranslationBtn: 'Скрыть перевод',
-        translatingText: 'Перевод...',
-        translatedBadge: 'Перевод',
-        photoChatTitle: 'ОБЩИЙ ФОТО-ЧАТ',
+        tickedTitle: 'МОЯ ПОДБОРКА (ПОДТВЕРЖДЁННЫЕ MONSUNO И ДЕТАЛИ)',
+        tickedSubtitle: 'Просматривайте собранные Monsuno и персонажи хотя бы с одной подтверждённой деталью.',
+        tickedFullMonsunoLabel: 'Собрано Monsuno:',
+        tickedPartialMonsunoLabel: 'Monsuno в подборке:',
+        searchTickedPlaceholder: 'Поиск в подборке (напр. LOCK)...',
+        tickedFilterAll: 'Все',
+        tickedFilterFull: 'Собрано (3/3)',
+        tickedFilterPartial: 'Частично',
+        noTickedFound: 'У вас пока нет подтверждённых Monsuno или деталей.',
+        tickedCompleteBadge: 'СОБРАНО',
+        tickedSingleBadge: 'ДЕТАЛЬ ОДОБРЕНА',
         photoChatSubtitle: 'Делитесь фотографиями фигурок, капсул и карт с сообществом.',
         photoChatPlaceholder: 'Описание фото...',
         sharePhotoBtn: 'Поделиться фото',
@@ -1160,6 +1170,7 @@
         languageLabel: 'اللغة',
         headerSub: 'المجموعة • الدردشة • السوق',
         navCollection: 'مجموعتي',
+        navTicked: 'مجموعتي المعتمدة',
         navChat: 'الدردشة العامة',
         navPhotoChat: 'دردشة الصور',
         navLeaderboard: 'المتصدرون',
@@ -1183,17 +1194,17 @@
         slotCards: 'Cards',
         slotNone: 'لا يوجد',
         noCharFound: 'لا توجد شخصيات مطابقة للبحث.',
-        chatTitle: 'دردشة هواة الجمع العامة',
-        chatSubtitle: 'اضغط على اسم المستخدم لعرض الملف الشخصي ونسبة إكمال المجموعة.',
-        chatInputPlaceholder: 'اكتب رسالة لهواة الجمع...',
-        sendBtn: 'إرسال',
-        noChatMsg: 'لا توجد رسائل بعد. كن أول من يرسل!',
-        deleteBtn: 'حذف',
-        translateBtn: 'ترجمة',
-        hideTranslationBtn: 'إخفاء الترجمة',
-        translatingText: 'جارٍ الترجمة...',
-        translatedBadge: 'ترجمة',
-        photoChatTitle: 'دردشة الصور العامة',
+        tickedTitle: 'مجموعتي المعتمدة (مونسونو والقطع المؤكدة)',
+        tickedSubtitle: 'اعرض المونسونو المكتملة وأي عنصر يحتوي على قطعة مؤكدة واحدة على الأقل.',
+        tickedFullMonsunoLabel: 'مونسونو مكتمل:',
+        tickedPartialMonsunoLabel: 'في مجموعتي:',
+        searchTickedPlaceholder: 'ابحث في مجموعتي (مثل LOCK)...',
+        tickedFilterAll: 'الكل',
+        tickedFilterFull: 'مكتمل (3/3)',
+        tickedFilterPartial: 'معتمد جزئيًا',
+        noTickedFound: 'لا توجد لديك أي مونسونو أو قطع معتمدة في مجموعتك بعد.',
+        tickedCompleteBadge: 'مكتمل',
+        tickedSingleBadge: 'قطعة معتمدة',
         photoChatSubtitle: 'شارك صور المجسمات والكبسولات والبطاقات مع المجتمع.',
         photoChatPlaceholder: 'وصف الصورة...',
         sharePhotoBtn: 'مشاركة صورة',
@@ -1258,6 +1269,7 @@
         languageLabel: 'Langue',
         headerSub: 'Collection • Chat • Marché',
         navCollection: 'Ma Collection',
+        navTicked: 'Mes Validés',
         navChat: 'Chat Global',
         navPhotoChat: 'Chat Photo',
         navLeaderboard: 'Classement',
@@ -1281,17 +1293,17 @@
         slotCards: 'Cards',
         slotNone: 'AUCUN',
         noCharFound: 'Aucun personnage trouvé.',
-        chatTitle: 'CHAT GLOBAL DES COLLECTIONNEURS',
-        chatSubtitle: 'Cliquez sur un pseudo pour voir le profil et la progression de collection.',
-        chatInputPlaceholder: 'Écrire un message aux collectionneurs...',
-        sendBtn: 'Envoyer',
-        noChatMsg: 'Aucun message pour le moment. Soyez le premier !',
-        deleteBtn: 'Supprimer',
-        translateBtn: 'Traduire',
-        hideTranslationBtn: 'Masquer la traduction',
-        translatingText: 'Traduction...',
-        translatedBadge: 'Traduction',
-        photoChatTitle: 'CHAT PHOTO GLOBAL',
+        tickedTitle: 'MES VALIDÉS (MONSUNOS & PIÈCES APPROUVÉES)',
+        tickedSubtitle: 'Consultez les Monsunos complétés et ceux ayant au moins une pièce validée.',
+        tickedFullMonsunoLabel: 'Monsunos complétés :',
+        tickedPartialMonsunoLabel: 'Dans ma collection :',
+        searchTickedPlaceholder: 'Rechercher (ex. LOCK)...',
+        tickedFilterAll: 'Tous',
+        tickedFilterFull: 'Complétés (3/3)',
+        tickedFilterPartial: 'Partiels',
+        noTickedFound: 'Vous n’avez encore aucun Monsuno ou pièce validé dans votre collection.',
+        tickedCompleteBadge: 'COMPLÉTÉ',
+        tickedSingleBadge: 'PIÈCE VALIDÉE',
         photoChatSubtitle: 'Partagez des photos de figurines, capsules et cartes avec la communauté.',
         photoChatPlaceholder: 'Légende de la photo...',
         sharePhotoBtn: 'Partager la photo',
@@ -1356,6 +1368,7 @@
         languageLabel: '言語',
         headerSub: 'コレクション • チャット • マーケット',
         navCollection: 'コレクション',
+        navTicked: 'マイコレクション',
         navChat: '全体チャット',
         navPhotoChat: 'フォトチャット',
         navLeaderboard: 'ランキング',
@@ -1379,17 +1392,17 @@
         slotCards: 'Cards',
         slotNone: 'なし',
         noCharFound: '一致するキャラクターが見つかりません。',
-        chatTitle: 'コレクター全体チャット',
-        chatSubtitle: 'ユーザー名をクリックするとプロフィールと達成率を確認できます。',
-        chatInputPlaceholder: 'コレクターにメッセージを送る...',
-        sendBtn: '送信',
-        noChatMsg: 'まだメッセージがありません。最初の投稿をしましょう！',
-        deleteBtn: '削除',
-        translateBtn: '翻訳',
-        hideTranslationBtn: '翻訳を閉じる',
-        translatingText: '翻訳中...',
-        translatedBadge: '翻訳',
-        photoChatTitle: '全体フォトチャット',
+        tickedTitle: 'マイコレクション（承認済み Monsuno＆パーツ）',
+        tickedSubtitle: '完成した Monsuno や、1つ以上のパーツが承認されたアイテムを表示します。',
+        tickedFullMonsunoLabel: '完成Monsuno:',
+        tickedPartialMonsunoLabel: 'コレクション内:',
+        searchTickedPlaceholder: 'コレクション検索（例: LOCK）...',
+        tickedFilterAll: 'すべて',
+        tickedFilterFull: '完成 (3/3)',
+        tickedFilterPartial: '一部承認',
+        noTickedFound: '承認済みの Monsuno やパーツはまだありません。',
+        tickedCompleteBadge: '完成',
+        tickedSingleBadge: '承認済みパーツ',
         photoChatSubtitle: 'フィギュア、カプセル、カードの写真をコミュニティと共有しましょう。',
         photoChatPlaceholder: '写真の説明...',
         sharePhotoBtn: '写真を共有',
@@ -1454,6 +1467,7 @@
         languageLabel: '语言',
         headerSub: '收藏 • 聊天 • 市集',
         navCollection: '我的收藏',
+        navTicked: '已集齐/已核准',
         navChat: '全球聊天',
         navPhotoChat: '图片聊天',
         navLeaderboard: '排行榜',
@@ -1477,17 +1491,17 @@
         slotCards: 'Cards',
         slotNone: '无',
         noCharFound: '未找到符合条件的角色。',
-        chatTitle: '全球收藏家聊天室',
-        chatSubtitle: '点击用户名可查看个人资料和收藏完成度。',
-        chatInputPlaceholder: '向收藏家发送消息...',
-        sendBtn: '发送',
-        noChatMsg: '暂无消息，快来发送第一条吧！',
-        deleteBtn: '删除',
-        translateBtn: '翻译',
-        hideTranslationBtn: '隐藏译文',
-        translatingText: '翻译中...',
-        translatedBadge: '译文',
-        photoChatTitle: '全球图片聊天',
+        tickedTitle: '我的核准收藏（已完成 MONSUNO 与部件）',
+        tickedSubtitle: '查看已集齐的 Monsuno 以及至少有一项部件通过核准的物品。',
+        tickedFullMonsunoLabel: '已完成 Monsuno：',
+        tickedPartialMonsunoLabel: '收藏中数量：',
+        searchTickedPlaceholder: '在收藏中搜索（如 LOCK）...',
+        tickedFilterAll: '全部',
+        tickedFilterFull: '已完成 (3/3)',
+        tickedFilterPartial: '部分核准',
+        noTickedFound: '您的收藏中还没有已核准的 Monsuno 或部件。',
+        tickedCompleteBadge: '已完成',
+        tickedSingleBadge: '已核准部件',
         photoChatSubtitle: '与社区分享你的人偶、胶囊和卡牌照片。',
         photoChatPlaceholder: '照片说明...',
         sharePhotoBtn: '分享照片',
@@ -2760,6 +2774,7 @@
       applyLanguage();
       if (state.user) {
         renderCollection();
+        renderTickedSection();
         renderChat();
         renderPhotoChat();
         renderLeaderboard();
@@ -3065,6 +3080,8 @@
       ['all', 'full', 'partial'].forEach(f => {
         const btn = document.getElementById(`ticked-filter-${f}`);
         if (!btn) return;
+        const labelKey = f === 'full' ? 'tickedFilterFull' : f === 'partial' ? 'tickedFilterPartial' : 'tickedFilterAll';
+        btn.textContent = t(labelKey);
         if (f === state.activeTickedFilter) {
           btn.className = 'px-3 py-1.5 rounded-xl text-xs font-extrabold bg-core-600 text-white transition';
         } else if (f === 'full') {
@@ -3081,6 +3098,12 @@
     function renderTickedSection() {
       const grid = document.getElementById('ticked-grid');
       if (!grid || !state.user) return;
+      ['all', 'full', 'partial'].forEach(f => {
+        const btn = document.getElementById(`ticked-filter-${f}`);
+        if (!btn) return;
+        const labelKey = f === 'full' ? 'tickedFilterFull' : f === 'partial' ? 'tickedFilterPartial' : 'tickedFilterAll';
+        btn.textContent = t(labelKey);
+      });
       const userCol = state.userCollections[state.user.username.toLowerCase()] || {};
       const searchQuery = (document.getElementById('ticked-search')?.value || '').trim().toLowerCase();
 
