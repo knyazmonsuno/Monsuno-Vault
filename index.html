@@ -1940,8 +1940,16 @@
               const nextCharSlots = { ...remoteCharSlots };
               Object.keys(localCharSlots).forEach(sKey => {
                 const localSlot = localCharSlots[sKey];
+                const remoteSlot = remoteCharSlots[sKey];
+                const localTs = Number(localSlot?.revokedAt || localSlot?.approvedAt || localSlot?.submittedAt || 0);
+                const remoteTsSlot = Number(remoteSlot?.revokedAt || remoteSlot?.approvedAt || remoteSlot?.submittedAt || 0);
+
                 if (localSlot?.status === 'revoked') {
-                  delete nextCharSlots[sKey];
+                  if (!remoteSlot || remoteTsSlot <= localTs) {
+                    nextCharSlots[sKey] = { status: 'revoked', revokedAt: localTs || Date.now() };
+                  }
+                } else if (remoteSlot?.status === 'revoked' && remoteTsSlot >= localTs) {
+                  nextCharSlots[sKey] = remoteSlot;
                 } else if (localSlot?.status === 'approved') {
                   nextCharSlots[sKey] = localSlot;
                 }
@@ -1949,17 +1957,6 @@
               nextUserCol[cId] = nextCharSlots;
             });
             mergedCollections[uKey] = nextUserCol;
-          });
-          Object.keys(mergedCollections).forEach(uKey => {
-            const uCol = mergedCollections[uKey] || {};
-            Object.keys(uCol).forEach(cId => {
-              const cSlots = uCol[cId] || {};
-              Object.keys(cSlots).forEach(sKey => {
-                if (cSlots[sKey]?.status === 'revoked') {
-                  delete cSlots[sKey];
-                }
-              });
-            });
           });
           if (JSON.stringify(mergedCollections) !== JSON.stringify(state.userCollections)) {
             state.userCollections = mergedCollections;
@@ -2787,10 +2784,12 @@
         )
       );
       saveState(true, false, true);
+      flushRemotePushNow();
       updateStats();
       renderCollection();
+      renderLeaderboard();
       openVerifyModal(charId);
-      showToast('Parça tiki koleksiyonundan kaldırıldı.');
+      showToast('Parça tiki koleksiyonundan kaldırıldı, sıralama ve yüzdeler güncellendi.');
     }
 
     function handleAddCharacter(event) {
@@ -3670,11 +3669,13 @@
         )
       );
       saveState(true, false, true);
+      flushRemotePushNow();
       updateStats();
       renderCollection();
+      renderLeaderboard();
       renderAdmin();
       openUserInspectModal(username);
-      showToast('Onay tiki kaldırıldı ve istatistikler güncellendi.');
+      showToast('Onay tiki kaldırıldı; sıralama ve yüzdeler anında güncellendi.');
     }
 
     function adminUpdateUserCreds(event, oldUsername) {
