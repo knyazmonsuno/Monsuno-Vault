@@ -1536,6 +1536,37 @@
       storedUsers.unshift({ ...DEFAULT_OWNER_USER });
     }
 
+    const initialDismissedQueueIds = loadJSON('mv3_dismissed_queue_ids', []);
+
+    function deduplicateQueueItems(items, dismissedIds = initialDismissedQueueIds) {
+      if (!Array.isArray(items)) return [];
+      const dismissedSet = new Set(Array.isArray(dismissedIds) ? dismissedIds.map(String) : []);
+      const seenIds = new Set();
+      const seenLogicalKeys = new Set();
+      const uniqueList = [];
+
+      for (const req of items) {
+        if (!req || typeof req !== 'object') continue;
+        const idKey = String(req.id || '').trim();
+        if (idKey && dismissedSet.has(idKey)) continue;
+
+        const logicalKey = [
+          String(req.username || '').trim().toLowerCase(),
+          String(req.charId || '').trim(),
+          String(req.slotKey || '').trim().toLowerCase()
+        ].join('::');
+
+        if (idKey && seenIds.has(idKey)) continue;
+        if (logicalKey !== '::::' && seenLogicalKeys.has(logicalKey)) continue;
+
+        if (idKey) seenIds.add(idKey);
+        if (logicalKey !== '::::') seenLogicalKeys.add(logicalKey);
+        uniqueList.push(req);
+      }
+
+      return uniqueList;
+    }
+
     const state = {
       lang: localStorage.getItem('mv3_lang') || 'tr',
       liveDbUrl: DEFAULT_LIVE_DB_URL,
@@ -1543,7 +1574,7 @@
       users: storedUsers,
       characters: loadInitialCharacters(),
       userCollections: loadJSON('mv3_user_collections', {}),
-      queue: loadJSON('mv3_queue', []),
+      queue: deduplicateQueueItems(loadJSON('mv3_queue', []), initialDismissedQueueIds),
       chat: loadJSON('mv3_chat', []),
       photoChat: loadJSON('mv3_photo_chat', []),
       market: loadJSON('mv3_market', []),
@@ -1553,7 +1584,8 @@
       activeFactionFilter: loadJSON('mv3_faction_filter', 'ALL'),
       activeMarketFilter: loadJSON('mv3_market_filter', 'all'),
       pendingProfileAvatar: null,
-      translationsCache: {}
+      translationsCache: {},
+      dismissedQueueIds: initialDismissedQueueIds
     };
 
     // Aynı tarayıcıda açık diğer sekmelerle anlık senkronizasyon kanalı
@@ -1612,181 +1644,42 @@
       }
     }
 
-    function deduplicateQueueItems(items) {
-      if (!Array.isArray(items)) return [];
-      const seenIds = new Set();
-      const seenLogicalKeys = new Set();
-      const uniqueList = [];
-
-      for (const req of items) {
-        if (!req || typeof req !== 'object') continue;
-        const idKey = String(req.id || '').trim();
-        // Aynı kullanıcı, aynı karakter ve aynı parça (slotKey) tekilleştirilir;
-        // farklı parçalar (örneğin capsule ve cards) ayrı kayıt olarak korunur.
-        const logicalKey = [
-          String(req.username || '').trim().toLowerCase(),
-          String(req.charId || '').trim(),
-          String(req.slotKey || '').trim().toLowerCase()
-        ].join('::');
-
-        if (idKey && seenIds.has(idKey)) continue;
-        if (logicalKey !== '::::' && seenLogicalKeys.has(logicalKey)) continue;
-
-        if (idKey) seenIds.add(idKey);
-        if (logicalKey !== '::::') seenLogicalKeys.add(logicalKey);
-        uniqueList.push(req);
+    function markQueueItemDismissed(req) {
+      if (!req) return;
+      if (!Array.isArray(state.dismissedQueueIds)) {
+        state.dismissedQueueIds = [];
       }
-
-      return uniqueList;
+      if (req.id && !state.dismissedQueueIds.includes(String(req.id))) {
+        state.dismissedQueueIds.push(String(req.id));
+        if (state.dismissedQueueIds.length > 500) {
+          state.dismissedQueueIds = state.dismissedQueueIds.slice(-500);
+        }
+      }
+      try {
+        localStorage.setItem('mv3_dismissed_queue_ids', JSON.stringify(state.dismissedQueueIds));
+      } catch (e) {}
     }
 
-    function mergeQueueArrays(localQueue, remoteQueue, preferRemote) {
-      const base = preferRemote
-        ? [...(Array.isArray(remoteQueue) ? remoteQueue : []), ...(Array.isArray(localQueue) ? localQueue : [])]
-        : [...(Array.isArray(localQueue) ? localQueue : []), ...(Array.isArray(remoteQueue) ? remoteQueue : [])];
-      return deduplicateQueueItems(base);
-    }
+    function removeResolvedFromQueue(reqId, reqObj) {
+      markQueueItemDismissed(reqObj);
+      const targetUserKey = String(reqObj?.username || '').trim().toLowerCase();
+      const targetCharId = String(reqObj?.charId || '').trim();
+      const targetSlotKey = String(reqObj?.slotKey || '').trim().toLowerCase();
 
-    function applyIncomingSnapshot(snap) {
-      if (!snap || typeof snap !== 'object') return;
-      const incomingTs = typeof snap.ts === 'number' ? snap.ts : 0;
-      const incomingQueueTs = typeof snap.queueTs === 'number' ? snap.queueTs : incomingTs;
-
-      let changed = false;
-      if (Array.isArray(snap.users) && snap.users.length) {
-        let mergedUsers = snap.users.slice();
-        if (!mergedUsers.some(u => (u.username || '').toLowerCase() === OWNER_USERNAME)) {
-          mergedUsers.unshift({ ...DEFAULT_OWNER_USER });
+      state.queue = deduplicateQueueItems(state.queue).filter(item => {
+        if (!item) return false;
+        if (reqId && String(item.id) === String(reqId)) return false;
+        if (
+          targetUserKey &&
+          targetCharId &&
+          targetSlotKey &&
+          String(item.username || '').trim().toLowerCase() === targetUserKey &&
+          String(item.charId || '').trim() === targetCharId &&
+          String(item.slotKey || '').trim().toLowerCase() === targetSlotKey
+        ) {
+          return false;
         }
-        if (JSON.stringify(mergedUsers) !== JSON.stringify(state.users)) {
-          state.users = mergedUsers;
-          changed = true;
-        }
-      }
-      if (Array.isArray(snap.characters) && snap.characters.length > 0) {
-        const normChars = normalizeCharactersArray(snap.characters);
-        if (JSON.stringify(normChars) !== JSON.stringify(state.characters)) {
-          state.characters = normChars;
-          changed = true;
-        }
-      }
-      if (snap.userCollections && typeof snap.userCollections === 'object') {
-        if (JSON.stringify(snap.userCollections) !== JSON.stringify(state.userCollections)) {
-          state.userCollections = snap.userCollections;
-          changed = true;
-        }
-      }
-      if (Array.isArray(snap.queue) && incomingQueueTs >= lastQueueMutationAt) {
-        const cleanedQueue = deduplicateQueueItems(snap.queue);
-        if (JSON.stringify(cleanedQueue) !== JSON.stringify(state.queue)) {
-          state.queue = cleanedQueue;
-          lastQueueMutationAt = Math.max(lastQueueMutationAt, incomingQueueTs);
-          try {
-            localStorage.setItem(STORAGE_KEY_QUEUE_TS, String(lastQueueMutationAt));
-            localStorage.setItem('mv3_queue', JSON.stringify(state.queue));
-          } catch (e) {}
-          changed = true;
-        }
-      }
-      if (Array.isArray(snap.chat) && JSON.stringify(snap.chat) !== JSON.stringify(state.chat)) {
-        state.chat = snap.chat;
-        changed = true;
-      }
-      if (Array.isArray(snap.photoChat) && JSON.stringify(snap.photoChat) !== JSON.stringify(state.photoChat)) {
-        state.photoChat = snap.photoChat;
-        changed = true;
-      }
-      if (Array.isArray(snap.market) && JSON.stringify(snap.market) !== JSON.stringify(state.market)) {
-        state.market = snap.market;
-        changed = true;
-      }
-      if (Array.isArray(snap.tickets) && JSON.stringify(snap.tickets) !== JSON.stringify(state.tickets)) {
-        state.tickets = snap.tickets;
-        changed = true;
-      }
-      if (Array.isArray(snap.reports) && JSON.stringify(snap.reports) !== JSON.stringify(state.reports)) {
-        state.reports = snap.reports;
-        changed = true;
-      }
-
-      if (changed) {
-        if (incomingTs) lastLocalMutationAt = Math.max(lastLocalMutationAt, incomingTs);
-        persistCharactersNow(state.characters);
-        refreshAllVisibleViews();
-      }
-    }
-
-    if (instantChannel) {
-      instantChannel.onmessage = (event) => {
-        applyIncomingSnapshot(event.data);
-      };
-    }
-
-    window.addEventListener('storage', (event) => {
-      if (!event.key) return;
-      if (event.key === STORAGE_KEY_CHARACTERS || event.key === 'mv3_characters') {
-        const freshChars = normalizeCharactersArray(loadJSON(STORAGE_KEY_CHARACTERS, state.characters));
-        if (JSON.stringify(freshChars) !== JSON.stringify(state.characters)) {
-          state.characters = freshChars;
-          refreshAllVisibleViews();
-        }
-      } else if (event.key === 'mv3_chat') {
-        state.chat = loadJSON('mv3_chat', state.chat);
-        refreshAllVisibleViews();
-      } else if (event.key === 'mv3_photo_chat') {
-        state.photoChat = loadJSON('mv3_photo_chat', state.photoChat);
-        refreshAllVisibleViews();
-      } else if (event.key === 'mv3_market') {
-        state.market = loadJSON('mv3_market', state.market);
-        refreshAllVisibleViews();
-      } else if (event.key === 'mv3_user_collections') {
-        state.userCollections = loadJSON('mv3_user_collections', state.userCollections);
-        refreshAllVisibleViews();
-      } else if (event.key === 'mv3_queue') {
-        const queueTs = Number(loadJSON(STORAGE_KEY_QUEUE_TS, 0)) || 0;
-        if (queueTs >= lastQueueMutationAt) {
-          state.queue = deduplicateQueueItems(loadJSON('mv3_queue', state.queue));
-          lastQueueMutationAt = Math.max(lastQueueMutationAt, queueTs);
-          refreshAllVisibleViews();
-        }
-      } else if (event.key === 'mv3_users') {
-        state.users = loadJSON('mv3_users', state.users);
-        refreshAllVisibleViews();
-      } else if (event.key === 'mv3_tickets') {
-        state.tickets = loadJSON('mv3_tickets', state.tickets);
-        refreshAllVisibleViews();
-      } else if (event.key === 'mv3_reports') {
-        state.reports = loadJSON('mv3_reports', state.reports);
-        refreshAllVisibleViews();
-      }
-    });
-
-    function t(key) {
-      const lang = TRANSLATIONS[state.lang] ? state.lang : 'tr';
-      return TRANSLATIONS[lang]?.[key] || TRANSLATIONS.tr[key] || key;
-    }
-
-    function applyLanguage() {
-      const lang = TRANSLATIONS[state.lang] ? state.lang : 'tr';
-      state.lang = lang;
-      document.documentElement.lang = lang;
-      document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr';
-
-      document.querySelectorAll('[data-i18n]').forEach(el => {
-        const key = el.getAttribute('data-i18n');
-        if (key) el.textContent = t(key);
-      });
-
-      document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
-        const key = el.getAttribute('data-i18n-placeholder');
-        if (key) el.setAttribute('placeholder', t(key));
-      });
-
-      ['lang-select-auth', 'lang-select-app'].forEach(id => {
-        const selectEl = document.getElementById(id);
-        if (selectEl && selectEl.value !== lang) {
-          selectEl.value = lang;
-        }
+        return true;
       });
     }
 
@@ -1858,6 +1751,7 @@
       return {
         updatedAt: effectiveUpdatedAt,
         queueUpdatedAt: lastQueueMutationAt || effectiveUpdatedAt,
+        dismissedQueueIds: Array.isArray(state.dismissedQueueIds) ? state.dismissedQueueIds : [],
         users: state.users,
         characters: normalizedChars,
         userCollections: state.userCollections,
@@ -2045,16 +1939,26 @@
               const remoteCharSlots = nextUserCol[cId] || {};
               const nextCharSlots = { ...remoteCharSlots };
               Object.keys(localCharSlots).forEach(sKey => {
-                if (localCharSlots[sKey]?.status === 'approved') {
-                  nextCharSlots[sKey] = localCharSlots[sKey];
-                }
-              });
-              nextUserCol[cId] = nextCharSlots;
+              if (localCharSlots[sKey]?.status === 'approved') {
+                nextCharSlots[sKey] = localCharSlots[sKey];
+              }
             });
-            mergedCollections[uKey] = nextUserCol;
+            nextUserCol[cId] = nextCharSlots;
           });
-          if (JSON.stringify(mergedCollections) !== JSON.stringify(state.userCollections)) {
-            state.userCollections = mergedCollections;
+          mergedCollections[uKey] = nextUserCol;
+        });
+        if (JSON.stringify(mergedCollections) !== JSON.stringify(state.userCollections)) {
+          state.userCollections = mergedCollections;
+          changed = true;
+        }
+      }
+      if (Array.isArray(remote.dismissedQueueIds)) {
+          const mergedDismissed = Array.from(new Set([
+            ...(Array.isArray(state.dismissedQueueIds) ? state.dismissedQueueIds.map(String) : []),
+            ...remote.dismissedQueueIds.map(String)
+          ])).slice(-500);
+          if (JSON.stringify(mergedDismissed) !== JSON.stringify(state.dismissedQueueIds || [])) {
+            state.dismissedQueueIds = mergedDismissed;
             changed = true;
           }
         }
@@ -2307,6 +2211,7 @@
         localStorage.setItem('mv3_users', JSON.stringify(state.users));
         localStorage.setItem('mv3_user_collections', JSON.stringify(state.userCollections));
         localStorage.setItem('mv3_queue', JSON.stringify(state.queue));
+        localStorage.setItem('mv3_dismissed_queue_ids', JSON.stringify(state.dismissedQueueIds || []));
         localStorage.setItem('mv3_chat', JSON.stringify(state.chat));
         localStorage.setItem('mv3_photo_chat', JSON.stringify(state.photoChat));
         localStorage.setItem('mv3_market', JSON.stringify(state.market));
@@ -2363,6 +2268,32 @@
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#39;');
+    }
+
+    function t(key) {
+      const lang = TRANSLATIONS[state.lang] ? state.lang : 'tr';
+      return (TRANSLATIONS[lang] && TRANSLATIONS[lang][key]) || TRANSLATIONS.tr[key] || key;
+    }
+
+    function applyLanguage() {
+      const lang = TRANSLATIONS[state.lang] ? state.lang : 'tr';
+      document.documentElement.lang = lang;
+      document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr';
+
+      document.querySelectorAll('[data-i18n]').forEach(el => {
+        const key = el.getAttribute('data-i18n');
+        if (key) el.textContent = t(key);
+      });
+
+      document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+        const key = el.getAttribute('data-i18n-placeholder');
+        if (key) el.placeholder = t(key);
+      });
+
+      const authSelect = document.getElementById('lang-select-auth');
+      const appSelect = document.getElementById('lang-select-app');
+      if (authSelect) authSelect.value = lang;
+      if (appSelect) appSelect.value = lang;
     }
 
     let isSubmittingVerification = false;
@@ -3571,9 +3502,15 @@
     }
 
     function approveQueueItem(reqId) {
-      const req = state.queue.find(r => r.id === reqId);
-      if (!req) return;
-      const userKey = req.username.toLowerCase();
+      const req = state.queue.find(r => String(r.id) === String(reqId));
+      if (!req) {
+        removeResolvedFromQueue(reqId, null);
+        saveState(true, false, true);
+        updateStats();
+        renderAdmin();
+        return;
+      }
+      const userKey = String(req.username || '').trim().toLowerCase();
       if (!state.userCollections[userKey]) state.userCollections[userKey] = {};
       if (!state.userCollections[userKey][req.charId]) state.userCollections[userKey][req.charId] = {};
       state.userCollections[userKey][req.charId][req.slotKey] = {
@@ -3581,29 +3518,26 @@
         photo: req.photo,
         approvedAt: Date.now()
       };
-      state.queue = state.queue.filter(
-        r => r.id !== reqId && !(r.username.toLowerCase() === userKey && r.charId === req.charId && r.slotKey === req.slotKey)
-      );
+      removeResolvedFromQueue(reqId, req);
       saveState(true, false, true);
       updateStats();
       renderAdmin();
-      showToast('Anında onaylandı ve kaydedildi!');
+      showToast('Anında onaylandı ve kuyruktan kaldırıldı!');
     }
 
     function rejectQueueItem(reqId) {
-      const req = state.queue.find(r => r.id === reqId);
-      if (!req) return;
-      const userKey = req.username.toLowerCase();
-      if (state.userCollections[userKey]?.[req.charId]?.[req.slotKey]?.status === 'pending') {
-        delete state.userCollections[userKey][req.charId][req.slotKey];
+      const req = state.queue.find(r => String(r.id) === String(reqId));
+      if (req) {
+        const userKey = String(req.username || '').trim().toLowerCase();
+        if (state.userCollections[userKey]?.[req.charId]?.[req.slotKey]?.status === 'pending') {
+          delete state.userCollections[userKey][req.charId][req.slotKey];
+        }
       }
-      state.queue = state.queue.filter(
-        r => r.id !== reqId && !(r.username.toLowerCase() === userKey && r.charId === req.charId && r.slotKey === req.slotKey)
-      );
+      removeResolvedFromQueue(reqId, req || { id: reqId });
       saveState(true, false, true);
       updateStats();
       renderAdmin();
-      showToast('Talep reddedildi ve kuyruktan kaldırıldı.');
+      showToast('Reddedildi ve kuyruktan kalıcı olarak kaldırıldı.');
     }
 
     function toggleUserBan(username) {
