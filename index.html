@@ -2036,44 +2036,7 @@
             changed = true;
           }
         }
-        if (remote.userCollections && typeof remote.userCollections === 'object') {
-          const mergedCollections = { ...remote.userCollections };
-          Object.keys(state.userCollections || {}).forEach(uKey => {
-            const localUserCol = state.userCollections[uKey] || {};
-            const remoteUserCol = mergedCollections[uKey] || {};
-            const nextUserCol = { ...remoteUserCol };
-            Object.keys(localUserCol).forEach(cId => {
-              const localCharSlots = localUserCol[cId] || {};
-              const remoteCharSlots = nextUserCol[cId] || {};
-              const nextCharSlots = { ...remoteCharSlots };
-              Object.keys(localCharSlots).forEach(sKey => {
-                const localSlot = localCharSlots[sKey];
-                const remoteSlot = remoteCharSlots[sKey];
-                const localTs = Number(localSlot?.rejectedAt || localSlot?.revokedAt || localSlot?.approvedAt || localSlot?.submittedAt || 0);
-                const remoteTsSlot = Number(remoteSlot?.rejectedAt || remoteSlot?.revokedAt || remoteSlot?.approvedAt || remoteSlot?.submittedAt || 0);
-
-                if (localSlot?.status === 'rejected' || localSlot?.status === 'revoked') {
-                  if (!remoteSlot || remoteTsSlot <= localTs) {
-                    nextCharSlots[sKey] = { ...localSlot };
-                  }
-                } else if ((remoteSlot?.status === 'rejected' || remoteSlot?.status === 'revoked') && remoteTsSlot >= localTs) {
-                  nextCharSlots[sKey] = remoteSlot;
-                } else if (remoteSlot?.status === 'approved' && remoteTsSlot >= localTs) {
-                  nextCharSlots[sKey] = remoteSlot;
-                } else if (localSlot?.status === 'approved' && localTs >= remoteTsSlot) {
-                  nextCharSlots[sKey] = localSlot;
-                }
-              });
-              nextUserCol[cId] = nextCharSlots;
-            });
-            mergedCollections[uKey] = nextUserCol;
-          });
-          if (JSON.stringify(mergedCollections) !== JSON.stringify(state.userCollections)) {
-            state.userCollections = mergedCollections;
-            changed = true;
-          }
-        }
-      if (Array.isArray(remote.dismissedQueueIds)) {
+        if (Array.isArray(remote.dismissedQueueIds)) {
           const mergedDismissed = Array.from(new Set([
             ...(Array.isArray(state.dismissedQueueIds) ? state.dismissedQueueIds.map(String) : []),
             ...remote.dismissedQueueIds.map(String)
@@ -2083,11 +2046,87 @@
             changed = true;
           }
         }
+        const dismissedSet = new Set((state.dismissedQueueIds || []).map(String));
+
+        if (remote.userCollections && typeof remote.userCollections === 'object') {
+          const mergedCollections = { ...remote.userCollections };
+          const allUserKeys = new Set([
+            ...Object.keys(remote.userCollections || {}),
+            ...Object.keys(state.userCollections || {})
+          ]);
+
+          allUserKeys.forEach(uKey => {
+            const localUserCol = state.userCollections[uKey] || {};
+            const remoteUserCol = remote.userCollections[uKey] || {};
+            const nextUserCol = { ...remoteUserCol };
+            const allCharIds = new Set([
+              ...Object.keys(remoteUserCol),
+              ...Object.keys(localUserCol)
+            ]);
+
+            allCharIds.forEach(cId => {
+              const localCharSlots = localUserCol[cId] || {};
+              const remoteCharSlots = remoteUserCol[cId] || {};
+              const nextCharSlots = { ...remoteCharSlots };
+              const allSlotKeys = new Set([
+                ...Object.keys(remoteCharSlots),
+                ...Object.keys(localCharSlots)
+              ]);
+
+              allSlotKeys.forEach(sKey => {
+                const localSlot = localCharSlots[sKey];
+                const remoteSlot = remoteCharSlots[sKey];
+                const getSlotTs = (s) => Number(
+                  s?.rejectedAt || s?.revokedAt || s?.approvedAt || s?.submittedAt || 0
+                );
+                const localTs = getSlotTs(localSlot);
+                const remoteTsSlot = getSlotTs(remoteSlot);
+
+                if (localSlot && !remoteSlot) {
+                  nextCharSlots[sKey] = { ...localSlot };
+                } else if (remoteSlot && !localSlot) {
+                  nextCharSlots[sKey] = { ...remoteSlot };
+                } else if (localSlot && remoteSlot) {
+                  if (remoteTsSlot > localTs) {
+                    nextCharSlots[sKey] = { ...remoteSlot };
+                  } else if (localTs > remoteTsSlot) {
+                    nextCharSlots[sKey] = { ...localSlot };
+                  } else {
+                    const priority = { rejected: 4, revoked: 4, approved: 3, pending: 2, none: 1 };
+                    const pLocal = priority[localSlot.status] || 0;
+                    const pRemote = priority[remoteSlot.status] || 0;
+                    nextCharSlots[sKey] = pRemote >= pLocal ? { ...remoteSlot } : { ...localSlot };
+                  }
+                }
+              });
+              nextUserCol[cId] = nextCharSlots;
+            });
+            mergedCollections[uKey] = nextUserCol;
+          });
+
+          if (JSON.stringify(mergedCollections) !== JSON.stringify(state.userCollections)) {
+            state.userCollections = mergedCollections;
+            changed = true;
+          }
+        }
+
         if (Array.isArray(remote.queue)) {
-          const cleanedRemoteQueue = deduplicateQueueItems(remote.queue);
+          const filteredRemoteQueue = deduplicateQueueItems(remote.queue, state.dismissedQueueIds).filter(req => {
+            if (!req || !req.id || dismissedSet.has(String(req.id))) return false;
+            const uKey = String(req.username || '').trim().toLowerCase();
+            const slotObj = state.userCollections[uKey]?.[req.charId]?.[req.slotKey];
+            const reqTs = Number(req.submittedAt || 0);
+            if (!slotObj) return true;
+            if (slotObj.status === 'approved' || slotObj.status === 'rejected' || slotObj.status === 'revoked') {
+              const decisionTs = Number(slotObj.approvedAt || slotObj.rejectedAt || slotObj.revokedAt || 0);
+              if (decisionTs >= reqTs) return false;
+            }
+            return true;
+          });
+
           if (forceInitial || remoteQueueTs >= lastQueueMutationAt) {
-            if (JSON.stringify(cleanedRemoteQueue) !== JSON.stringify(state.queue)) {
-              state.queue = cleanedRemoteQueue;
+            if (JSON.stringify(filteredRemoteQueue) !== JSON.stringify(state.queue)) {
+              state.queue = filteredRemoteQueue;
               lastQueueMutationAt = Math.max(lastQueueMutationAt, remoteQueueTs);
               changed = true;
             }
@@ -3683,21 +3722,6 @@
       updateStats();
       renderAdmin();
       showToast('Anında reddedildi ve kullanıcının ekranından düşürüldü.');
-    }
-
-    function rejectQueueItem(reqId) {
-      const req = state.queue.find(r => String(r.id) === String(reqId));
-      if (req) {
-        const userKey = String(req.username || '').trim().toLowerCase();
-        if (state.userCollections[userKey]?.[req.charId]?.[req.slotKey]?.status === 'pending') {
-          delete state.userCollections[userKey][req.charId][req.slotKey];
-        }
-      }
-      removeResolvedFromQueue(reqId, req || { id: reqId });
-      saveState(true, false, true);
-      updateStats();
-      renderAdmin();
-      showToast('Reddedildi ve kuyruktan kalıcı olarak kaldırıldı.');
     }
 
     function toggleUserBan(username) {
