@@ -1939,19 +1939,33 @@
               const remoteCharSlots = nextUserCol[cId] || {};
               const nextCharSlots = { ...remoteCharSlots };
               Object.keys(localCharSlots).forEach(sKey => {
-              if (localCharSlots[sKey]?.status === 'approved') {
-                nextCharSlots[sKey] = localCharSlots[sKey];
-              }
+                const localSlot = localCharSlots[sKey];
+                if (localSlot?.status === 'revoked') {
+                  delete nextCharSlots[sKey];
+                } else if (localSlot?.status === 'approved') {
+                  nextCharSlots[sKey] = localSlot;
+                }
+              });
+              nextUserCol[cId] = nextCharSlots;
             });
-            nextUserCol[cId] = nextCharSlots;
+            mergedCollections[uKey] = nextUserCol;
           });
-          mergedCollections[uKey] = nextUserCol;
-        });
-        if (JSON.stringify(mergedCollections) !== JSON.stringify(state.userCollections)) {
-          state.userCollections = mergedCollections;
-          changed = true;
+          Object.keys(mergedCollections).forEach(uKey => {
+            const uCol = mergedCollections[uKey] || {};
+            Object.keys(uCol).forEach(cId => {
+              const cSlots = uCol[cId] || {};
+              Object.keys(cSlots).forEach(sKey => {
+                if (cSlots[sKey]?.status === 'revoked') {
+                  delete cSlots[sKey];
+                }
+              });
+            });
+          });
+          if (JSON.stringify(mergedCollections) !== JSON.stringify(state.userCollections)) {
+            state.userCollections = mergedCollections;
+            changed = true;
+          }
         }
-      }
       if (Array.isArray(remote.dismissedQueueIds)) {
           const mergedDismissed = Array.from(new Set([
             ...(Array.isArray(state.dismissedQueueIds) ? state.dismissedQueueIds.map(String) : []),
@@ -2758,11 +2772,21 @@
 
     function removeOwnSlotTick(charId, slotKey) {
       if (!state.user) return;
-      const userKey = state.user.username.toLowerCase();
-      if (state.userCollections[userKey]?.[charId]) {
-        delete state.userCollections[userKey][charId][slotKey];
-      }
-      saveState(true);
+      const userKey = String(state.user.username || '').trim().toLowerCase();
+      if (!state.userCollections[userKey]) state.userCollections[userKey] = {};
+      if (!state.userCollections[userKey][charId]) state.userCollections[userKey][charId] = {};
+      state.userCollections[userKey][charId][slotKey] = {
+        status: 'revoked',
+        revokedAt: Date.now()
+      };
+      state.queue = deduplicateQueueItems(state.queue).filter(
+        r => !(
+          String(r.username || '').trim().toLowerCase() === userKey &&
+          String(r.charId || '').trim() === String(charId).trim() &&
+          String(r.slotKey || '').trim().toLowerCase() === String(slotKey).trim().toLowerCase()
+        )
+      );
+      saveState(true, false, true);
       updateStats();
       renderCollection();
       openVerifyModal(charId);
@@ -3631,11 +3655,21 @@
 
     function adminRevokeTick(username, charId, slotKey) {
       if (!isOwner(state.user?.username)) return;
-      const userKey = username.toLowerCase();
-      if (state.userCollections[userKey]?.[charId]) {
-        delete state.userCollections[userKey][charId][slotKey];
-      }
-      saveState(true);
+      const userKey = String(username || '').trim().toLowerCase();
+      if (!state.userCollections[userKey]) state.userCollections[userKey] = {};
+      if (!state.userCollections[userKey][charId]) state.userCollections[userKey][charId] = {};
+      state.userCollections[userKey][charId][slotKey] = {
+        status: 'revoked',
+        revokedAt: Date.now()
+      };
+      state.queue = deduplicateQueueItems(state.queue).filter(
+        r => !(
+          String(r.username || '').trim().toLowerCase() === userKey &&
+          String(r.charId || '').trim() === String(charId).trim() &&
+          String(r.slotKey || '').trim().toLowerCase() === String(slotKey).trim().toLowerCase()
+        )
+      );
+      saveState(true, false, true);
       updateStats();
       renderCollection();
       renderAdmin();
