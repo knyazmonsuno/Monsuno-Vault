@@ -647,6 +647,7 @@
     const STORAGE_KEY_CHARACTERS = 'mv3_characters_v2';
     const STORAGE_KEY_MUTATION_TS = 'mv3_last_mutation_at';
     const STORAGE_KEY_QUEUE_TS = 'mv3_queue_mutation_at';
+    const STORAGE_KEY_DECISIONS = 'mv3_slot_decisions_v1';
 
     const CURRENCY_SYMBOLS = {
       TL: '₺',
@@ -1537,8 +1538,72 @@
     }
 
     const initialDismissedQueueIds = loadJSON('mv3_dismissed_queue_ids', []);
+    const initialDecisionsMap = loadJSON(STORAGE_KEY_DECISIONS, {});
 
-    function deduplicateQueueItems(items, dismissedIds = initialDismissedQueueIds) {
+    function makeSlotDecisionKey(username, charId, slotKey) {
+      return [
+        String(username || '').trim().toLowerCase(),
+        String(charId || '').trim(),
+        String(slotKey || '').trim().toLowerCase()
+      ].join('::');
+    }
+
+    function recordSlotDecision(username, charId, slotKey, status, ts = Date.now()) {
+      const key = makeSlotDecisionKey(username, charId, slotKey);
+      if (!key || key === '::::') return;
+      if (!state.slotDecisions || typeof state.slotDecisions !== 'object') {
+        state.slotDecisions = {};
+      }
+      const existing = state.slotDecisions[key];
+      const nextTs = Math.max(Number(existing?.ts || 0) + 1, Number(ts || Date.now()));
+      state.slotDecisions[key] = {
+        status,
+        ts: nextTs
+      };
+      try {
+        localStorage.setItem(STORAGE_KEY_DECISIONS, JSON.stringify(state.slotDecisions));
+      } catch (e) {}
+      return nextTs;
+    }
+
+    function applyRecordedDecisionsToCollections() {
+      const decisions = state.slotDecisions && typeof state.slotDecisions === 'object' ? state.slotDecisions : {};
+      Object.entries(decisions).forEach(([key, dec]) => {
+        if (!dec || !dec.status) return;
+        const parts = key.split('::');
+        if (parts.length < 3) return;
+        const [uKey, cId, sKey] = parts;
+        if (!uKey || !cId || !sKey) return;
+
+        if (!state.userCollections[uKey]) state.userCollections[uKey] = {};
+        if (!state.userCollections[uKey][cId]) state.userCollections[uKey][cId] = {};
+
+        const currentSlot = state.userCollections[uKey][cId][sKey];
+        const currentTs = Number(
+          currentSlot?.rejectedAt || currentSlot?.revokedAt || currentSlot?.approvedAt || currentSlot?.submittedAt || 0
+        );
+        const decTs = Number(dec.ts || 0);
+
+        if (dec.status === 'rejected' && currentSlot?.status === 'pending' && decTs >= currentTs) {
+          state.userCollections[uKey][cId][sKey] = {
+            status: 'rejected',
+            rejectedAt: decTs
+          };
+        } else if (dec.status === 'revoked' && currentSlot?.status === 'approved' && decTs >= currentTs) {
+          state.userCollections[uKey][cId][sKey] = {
+            status: 'revoked',
+            revokedAt: decTs
+          };
+        } else if (!currentSlot && (dec.status === 'rejected' || dec.status === 'revoked')) {
+          state.userCollections[uKey][cId][sKey] = {
+            status: dec.status,
+            [dec.status === 'rejected' ? 'rejectedAt' : 'revokedAt']: decTs
+          };
+        }
+      });
+    }
+
+    function deduplicateQueueItems(items, dismissedIds = initialDismissedQueueIds, decisionsMap = initialDecisionsMap) {
       if (!Array.isArray(items)) return [];
       const dismissedSet = new Set(Array.isArray(dismissedIds) ? dismissedIds.map(String) : []);
       const seenIds = new Set();
@@ -1550,11 +1615,16 @@
         const idKey = String(req.id || '').trim();
         if (idKey && dismissedSet.has(idKey)) continue;
 
-        const logicalKey = [
-          String(req.username || '').trim().toLowerCase(),
-          String(req.charId || '').trim(),
-          String(req.slotKey || '').trim().toLowerCase()
-        ].join('::');
+        const logicalKey = makeSlotDecisionKey(req.username, req.charId, req.slotKey);
+        const recordedDec = decisionsMap && logicalKey ? decisionsMap[logicalKey] : null;
+        const reqTs = Number(req.submittedAt || 0);
+        if (
+          recordedDec &&
+          (recordedDec.status === 'rejected' || recordedDec.status === 'revoked' || recordedDec.status === 'approved') &&
+          Number(recordedDec.ts || 0) >= reqTs
+        ) {
+          continue;
+        }
 
         if (idKey && seenIds.has(idKey)) continue;
         if (logicalKey !== '::::' && seenLogicalKeys.has(logicalKey)) continue;
@@ -1574,7 +1644,8 @@
       users: storedUsers,
       characters: loadInitialCharacters(),
       userCollections: loadJSON('mv3_user_collections', {}),
-      queue: deduplicateQueueItems(loadJSON('mv3_queue', []), initialDismissedQueueIds),
+      slotDecisions: initialDecisionsMap,
+      queue: deduplicateQueueItems(loadJSON('mv3_queue', []), initialDismissedQueueIds, initialDecisionsMap),
       chat: loadJSON('mv3_chat', []),
       photoChat: loadJSON('mv3_photo_chat', []),
       market: loadJSON('mv3_market', []),
@@ -1631,8 +1702,16 @@
           ...snapshot.dismissedQueueIds.map(String)
         ])).slice(-500);
       }
+      if (snapshot.slotDecisions && typeof snapshot.slotDecisions === 'object') {
+        state.slotDecisions = {
+          ...(state.slotDecisions || {}),
+          ...snapshot.slotDecisions
+        };
+        applyRecordedDecisionsToCollections();
+        changed = true;
+      }
       if (Array.isArray(snapshot.queue) && incomingQueueTs >= lastQueueMutationAt) {
-        const cleaned = deduplicateQueueItems(snapshot.queue, state.dismissedQueueIds);
+        const cleaned = deduplicateQueueItems(snapshot.queue, state.dismissedQueueIds, state.slotDecisions);
         if (JSON.stringify(cleaned) !== JSON.stringify(state.queue)) {
           state.queue = cleaned;
           lastQueueMutationAt = Math.max(lastQueueMutationAt, incomingQueueTs);
@@ -1678,9 +1757,15 @@
       if (!event.key || !event.key.startsWith('mv3_')) return;
       if (event.key === 'mv3_user_collections') {
         state.userCollections = loadJSON('mv3_user_collections', {});
+        applyRecordedDecisionsToCollections();
+      } else if (event.key === STORAGE_KEY_DECISIONS) {
+        state.slotDecisions = loadJSON(STORAGE_KEY_DECISIONS, {});
+        applyRecordedDecisionsToCollections();
+        state.queue = deduplicateQueueItems(state.queue, state.dismissedQueueIds, state.slotDecisions);
       } else if (event.key === 'mv3_queue') {
         state.dismissedQueueIds = loadJSON('mv3_dismissed_queue_ids', state.dismissedQueueIds || []);
-        state.queue = deduplicateQueueItems(loadJSON('mv3_queue', []), state.dismissedQueueIds);
+        state.slotDecisions = loadJSON(STORAGE_KEY_DECISIONS, state.slotDecisions || {});
+        state.queue = deduplicateQueueItems(loadJSON('mv3_queue', []), state.dismissedQueueIds, state.slotDecisions);
       } else if (event.key === 'mv3_users') {
         state.users = loadJSON('mv3_users', state.users);
       } else if (event.key === STORAGE_KEY_CHARACTERS) {
@@ -1732,10 +1817,11 @@
         ts: lastLocalMutationAt || Date.now(),
         queueTs: lastQueueMutationAt || lastLocalMutationAt || Date.now(),
         dismissedQueueIds: Array.isArray(state.dismissedQueueIds) ? state.dismissedQueueIds : [],
+        slotDecisions: state.slotDecisions || {},
         users: state.users,
         characters: normalizeCharactersArray(state.characters),
         userCollections: state.userCollections,
-        queue: deduplicateQueueItems(state.queue),
+        queue: deduplicateQueueItems(state.queue, state.dismissedQueueIds, state.slotDecisions),
         chat: state.chat,
         photoChat: state.photoChat,
         market: state.market,
@@ -1771,7 +1857,7 @@
       const targetCharId = String(reqObj?.charId || '').trim();
       const targetSlotKey = String(reqObj?.slotKey || '').trim().toLowerCase();
 
-      state.queue = deduplicateQueueItems(state.queue).filter(item => {
+      state.queue = deduplicateQueueItems(state.queue, state.dismissedQueueIds, state.slotDecisions).filter(item => {
         if (!item) return false;
         if (reqId && String(item.id) === String(reqId)) return false;
         if (
@@ -1854,12 +1940,13 @@
     function buildSharedPayload() {
       const normalizedChars = normalizeCharactersArray(state.characters);
       state.characters = normalizedChars;
-      state.queue = deduplicateQueueItems(state.queue);
+      state.queue = deduplicateQueueItems(state.queue, state.dismissedQueueIds, state.slotDecisions);
       const effectiveUpdatedAt = Math.max(lastLocalMutationAt || 0, lastQueueMutationAt || 0, Date.now());
       return {
         updatedAt: effectiveUpdatedAt,
         queueUpdatedAt: lastQueueMutationAt || effectiveUpdatedAt,
         dismissedQueueIds: Array.isArray(state.dismissedQueueIds) ? state.dismissedQueueIds : [],
+        slotDecisions: state.slotDecisions || {},
         users: state.users,
         characters: normalizedChars,
         userCollections: state.userCollections,
@@ -2048,6 +2135,21 @@
         }
         const dismissedSet = new Set((state.dismissedQueueIds || []).map(String));
 
+        if (remote.slotDecisions && typeof remote.slotDecisions === 'object') {
+          const mergedDecisions = { ...(state.slotDecisions || {}) };
+          Object.entries(remote.slotDecisions).forEach(([k, v]) => {
+            if (!v || !v.status) return;
+            const prev = mergedDecisions[k];
+            if (!prev || Number(v.ts || 0) >= Number(prev.ts || 0)) {
+              mergedDecisions[k] = { ...v };
+            }
+          });
+          if (JSON.stringify(mergedDecisions) !== JSON.stringify(state.slotDecisions || {})) {
+            state.slotDecisions = mergedDecisions;
+            changed = true;
+          }
+        }
+
         if (remote.userCollections && typeof remote.userCollections === 'object') {
           const mergedCollections = { ...remote.userCollections };
           const allUserKeys = new Set([
@@ -2076,6 +2178,8 @@
               allSlotKeys.forEach(sKey => {
                 const localSlot = localCharSlots[sKey];
                 const remoteSlot = remoteCharSlots[sKey];
+                const decKey = makeSlotDecisionKey(uKey, cId, sKey);
+                const recDec = state.slotDecisions?.[decKey];
                 const getSlotTs = (s) => Number(
                   s?.rejectedAt || s?.revokedAt || s?.approvedAt || s?.submittedAt || 0
                 );
@@ -2098,6 +2202,18 @@
                     nextCharSlots[sKey] = pRemote >= pLocal ? { ...remoteSlot } : { ...localSlot };
                   }
                 }
+
+                if (
+                  recDec &&
+                  (recDec.status === 'rejected' || recDec.status === 'revoked') &&
+                  nextCharSlots[sKey]?.status === 'pending' &&
+                  Number(recDec.ts || 0) >= Number(nextCharSlots[sKey]?.submittedAt || 0)
+                ) {
+                  nextCharSlots[sKey] = {
+                    status: recDec.status,
+                    [recDec.status === 'rejected' ? 'rejectedAt' : 'revokedAt']: Number(recDec.ts || Date.now())
+                  };
+                }
               });
               nextUserCol[cId] = nextCharSlots;
             });
@@ -2110,12 +2226,23 @@
           }
         }
 
+        applyRecordedDecisionsToCollections();
+
         if (Array.isArray(remote.queue)) {
-          const filteredRemoteQueue = deduplicateQueueItems(remote.queue, state.dismissedQueueIds).filter(req => {
+          const filteredRemoteQueue = deduplicateQueueItems(remote.queue, state.dismissedQueueIds, state.slotDecisions).filter(req => {
             if (!req || !req.id || dismissedSet.has(String(req.id))) return false;
             const uKey = String(req.username || '').trim().toLowerCase();
+            const decKey = makeSlotDecisionKey(uKey, req.charId, req.slotKey);
+            const recDec = state.slotDecisions?.[decKey];
             const slotObj = state.userCollections[uKey]?.[req.charId]?.[req.slotKey];
             const reqTs = Number(req.submittedAt || 0);
+            if (
+              recDec &&
+              (recDec.status === 'approved' || recDec.status === 'rejected' || recDec.status === 'revoked') &&
+              Number(recDec.ts || 0) >= reqTs
+            ) {
+              return false;
+            }
             if (!slotObj) return true;
             if (slotObj.status === 'approved' || slotObj.status === 'rejected' || slotObj.status === 'revoked') {
               const decisionTs = Number(slotObj.approvedAt || slotObj.rejectedAt || slotObj.revokedAt || 0);
@@ -2368,12 +2495,14 @@
     function saveState(syncRemote = true, syncChars = false, queueChanged = false) {
       markLocalMutation(queueChanged);
       persistCharactersNow(state.characters);
-      state.queue = deduplicateQueueItems(state.queue);
+      applyRecordedDecisionsToCollections();
+      state.queue = deduplicateQueueItems(state.queue, state.dismissedQueueIds, state.slotDecisions);
       try {
         localStorage.setItem('mv3_lang', state.lang);
         localStorage.setItem('mv3_current_user', JSON.stringify(state.user));
         localStorage.setItem('mv3_users', JSON.stringify(state.users));
         localStorage.setItem('mv3_user_collections', JSON.stringify(state.userCollections));
+        localStorage.setItem(STORAGE_KEY_DECISIONS, JSON.stringify(state.slotDecisions || {}));
         localStorage.setItem('mv3_queue', JSON.stringify(state.queue));
         localStorage.setItem('mv3_dismissed_queue_ids', JSON.stringify(state.dismissedQueueIds || []));
         localStorage.setItem('mv3_chat', JSON.stringify(state.chat));
@@ -3709,11 +3838,12 @@
       const req = state.queue.find(r => String(r.id) === String(reqId));
       if (req) {
         const userKey = String(req.username || '').trim().toLowerCase();
+        const rejectedAt = recordSlotDecision(userKey, req.charId, req.slotKey, 'rejected', Date.now());
         if (!state.userCollections[userKey]) state.userCollections[userKey] = {};
         if (!state.userCollections[userKey][req.charId]) state.userCollections[userKey][req.charId] = {};
         state.userCollections[userKey][req.charId][req.slotKey] = {
           status: 'rejected',
-          rejectedAt: Date.now()
+          rejectedAt
         };
       }
       removeResolvedFromQueue(reqId, req || { id: reqId });
@@ -3895,7 +4025,8 @@
     }
 
     function initApp() {
-      state.queue = deduplicateQueueItems(state.queue);
+      applyRecordedDecisionsToCollections();
+      state.queue = deduplicateQueueItems(state.queue, state.dismissedQueueIds, state.slotDecisions);
       applyLanguage();
       updateLiveSyncButton(Boolean(getNormalizedDatabaseURL()));
       setupAutoSaveHooks();
