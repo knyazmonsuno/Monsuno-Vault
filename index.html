@@ -1498,9 +1498,9 @@
       market: loadJSON('mv3_market', []),
       tickets: loadJSON('mv3_tickets', []),
       reports: loadJSON('mv3_reports', []),
-      activeSection: 'collection',
-      activeFactionFilter: 'ALL',
-      activeMarketFilter: 'all',
+      activeSection: loadJSON('mv3_active_section', 'collection'),
+      activeFactionFilter: loadJSON('mv3_faction_filter', 'ALL'),
+      activeMarketFilter: loadJSON('mv3_market_filter', 'all'),
       pendingProfileAvatar: null,
       translationsCache: {}
     };
@@ -1521,10 +1521,10 @@
       const btn = document.getElementById('live-sync-status-btn');
       if (!btn) return;
       if (connected) {
-        btn.textContent = '🟢 Çevrimiçi';
+        btn.textContent = '🟢 Otomatik Kayıt Aktif';
         btn.className = 'px-2.5 py-2 rounded-xl text-xs font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/40';
       } else {
-        btn.textContent = '🌐 Çevrimdışı';
+        btn.textContent = '🌐 Yerel Otomatik Kayıt';
         btn.className = 'px-2.5 py-2 rounded-xl text-xs font-bold bg-slate-900 text-slate-300 border border-slate-700';
       }
     }
@@ -1545,10 +1545,13 @@
     }
 
     let pushDebounceTimer = null;
-    let lastLocalMutationAt = 0;
+    let lastLocalMutationAt = loadJSON('mv3_last_mutation_at', 0);
 
     function markLocalMutation() {
       lastLocalMutationAt = Date.now();
+      try {
+        localStorage.setItem('mv3_last_mutation_at', String(lastLocalMutationAt));
+      } catch (e) {}
     }
 
     function compressImageFile(file, maxDim = 480, quality = 0.82) {
@@ -1612,6 +1615,9 @@
         if (!res.ok) return false;
         const data = await res.json();
         if (data && Array.isArray(data.items) && data.items.length > 0) {
+          if (typeof data.updatedAt === 'number' && data.updatedAt < lastLocalMutationAt) {
+            return false;
+          }
           if (JSON.stringify(data.items) !== JSON.stringify(state.characters)) {
             state.characters = data.items;
             return true;
@@ -1621,29 +1627,34 @@
       return false;
     }
 
+    async function flushRemotePushNow() {
+      const dbUrl = getNormalizedDatabaseURL();
+      if (!dbUrl) return;
+      try {
+        const res = await fetch(`${dbUrl}/monsunoVaultShared.json`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(buildSharedPayload())
+        });
+        updateLiveSyncButton(res.ok);
+      } catch (e) {
+        updateLiveSyncButton(false);
+      }
+    }
+
     function scheduleRemotePush() {
       const dbUrl = getNormalizedDatabaseURL();
       if (!dbUrl) return;
       clearTimeout(pushDebounceTimer);
-      pushDebounceTimer = setTimeout(async () => {
-        try {
-          const res = await fetch(`${dbUrl}/monsunoVaultShared.json`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(buildSharedPayload())
-          });
-          updateLiveSyncButton(res.ok);
-        } catch (e) {
-          updateLiveSyncButton(false);
-        }
-      }, 0);
+      pushDebounceTimer = setTimeout(() => {
+        flushRemotePushNow();
+      }, 150);
     }
 
     let isPullingRemote = false;
     async function pullRemoteSharedState(showAlertOnFirst = false, forceInitial = false) {
       const dbUrl = getNormalizedDatabaseURL();
       if (!dbUrl || isPullingRemote) return;
-      // Yerel bir onay/değişiklikten hemen sonra eski uzak verinin üzerine yazmasını engelle
       if (!forceInitial && Date.now() - lastLocalMutationAt < 2500) return;
       isPullingRemote = true;
       try {
@@ -1660,7 +1671,6 @@
           return;
         }
 
-        // Uzak veri yerel son işlemden daha eskiyse geri çekip üzerine yazma
         if (!forceInitial && typeof remote.updatedAt === 'number' && remote.updatedAt < lastLocalMutationAt) {
           return;
         }
@@ -1681,7 +1691,6 @@
           changed = true;
         }
         if (remote.userCollections && typeof remote.userCollections === 'object') {
-          // Onaylanmış tiklerin eski uzak snapshot ile silinmesini engelle
           const mergedCollections = { ...remote.userCollections };
           Object.keys(state.userCollections || {}).forEach(uKey => {
             const localUserCol = state.userCollections[uKey] || {};
@@ -1943,6 +1952,9 @@
         localStorage.setItem('mv3_market', JSON.stringify(state.market));
         localStorage.setItem('mv3_tickets', JSON.stringify(state.tickets));
         localStorage.setItem('mv3_reports', JSON.stringify(state.reports));
+        localStorage.setItem('mv3_active_section', JSON.stringify(state.activeSection));
+        localStorage.setItem('mv3_faction_filter', JSON.stringify(state.activeFactionFilter));
+        localStorage.setItem('mv3_market_filter', JSON.stringify(state.activeMarketFilter));
       } catch (e) {
         try {
           localStorage.setItem('mv3_characters', JSON.stringify(state.characters));
@@ -2172,6 +2184,7 @@
 
     function switchSection(sec) {
       state.activeSection = sec;
+      saveState(false);
       const sections = ['collection', 'chat', 'photo-chat', 'leaderboard', 'market', 'tickets', 'support', 'admin'];
       sections.forEach(s => {
         document.getElementById(`section-${s}`)?.classList.toggle('hidden', s !== sec);
@@ -2201,6 +2214,7 @@
 
     function setFactionFilter(faction) {
       state.activeFactionFilter = faction;
+      saveState(false);
       document.querySelectorAll('.faction-filter-btn').forEach(btn => {
         const f = btn.getAttribute('data-faction');
         if (f === faction) {
@@ -2362,7 +2376,7 @@
         updateStats();
         renderCollection();
         openVerifyModal(charId);
-        showToast(`${char.name} (${slotLabel}) anında onaylandı!`);
+        showToast(`${char.name} (${slotLabel}) anında onaylandı ve kaydedildi!`);
         return;
       }
 
@@ -2518,11 +2532,19 @@
 
     function handleProfilePhotoChange(event) {
       const file = event.target.files?.[0];
-      if (!file) return;
+      if (!file || !state.user) return;
       compressImageFile(file, 256, 0.82).then(imgData => {
         if (!imgData) return;
         state.pendingProfileAvatar = imgData;
         document.getElementById('profile-preview-avatar').src = imgData;
+        const target = state.users.find(u => u.username.toLowerCase() === state.user.username.toLowerCase());
+        if (target) {
+          target.avatar = imgData;
+          state.user = { ...target };
+          saveState(true);
+          document.getElementById('header-user-avatar').src = imgData;
+          showToast('Profil fotoğrafı otomatik kaydedildi.');
+        }
       });
     }
 
@@ -2541,7 +2563,7 @@
       saveState(true);
       bootAuthenticatedApp();
       closeModal('profile-modal');
-      showToast('Profil bilgilerin güncellendi.');
+      showToast('Profil bilgilerin otomatik kaydedildi.');
     }
 
     function renderChat() {
@@ -2697,7 +2719,7 @@
         event.target.reset();
         saveState(true);
         renderPhotoChat();
-        showToast('Fotoğraf paylaşıldı!');
+        showToast('Fotoğraf paylaşıldı ve kaydedildi!');
       });
     }
 
@@ -2741,6 +2763,7 @@
 
     function setMarketFilter(filter) {
       state.activeMarketFilter = filter;
+      saveState(false);
       ['all', 'wanted', 'mine'].forEach(f => {
         const btn = document.getElementById(`market-tab-${f}`);
         if (!btn) return;
@@ -2776,7 +2799,6 @@
             ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
             : 'bg-amber-500/20 text-amber-300 border-amber-500/40';
         const trEntry = state.translationsCache[`${lang}::lst-${item.id}`];
-        const fullListingText = `${item.title}${item.desc ? ' — ' + item.desc : ''}`;
         return `
           <div class="glass-panel rounded-3xl overflow-hidden border border-slate-800 flex flex-col">
             <img src="${escapeHTML(item.photo)}" alt="${escapeHTML(item.title)}" class="w-full h-48 object-cover bg-slate-950" />
@@ -2869,7 +2891,7 @@
         renderMarket();
         closeModal('create-listing-modal');
         event.target.reset();
-        showToast('İlan yayınlandı.');
+        showToast('İlan yayınlandı ve kaydedildi.');
       };
 
       if (photoInput?.files?.[0]) {
@@ -2908,7 +2930,7 @@
       saveState(true);
       updateStats();
       renderTickets();
-      showToast('Ticket talebiniz iletildi.');
+      showToast('Ticket talebiniz iletildi ve kaydedildi.');
     }
 
     function renderAdminUsersList() {
@@ -3117,7 +3139,7 @@
       saveState(true);
       updateStats();
       renderAdmin();
-      showToast('Anında onaylandı!');
+      showToast('Anında onaylandı ve kaydedildi!');
     }
 
     function rejectQueueItem(reqId) {
@@ -3268,12 +3290,37 @@
       showToast('Kullanıcı adı ve şifre güncellendi.');
     }
 
+    function setupAutoSaveHooks() {
+      document.addEventListener('visibilitychange', () => {
+        if (document.hidden && state.user) {
+          saveState(false);
+          flushRemotePushNow();
+        } else if (!document.hidden && getNormalizedDatabaseURL()) {
+          pullRemoteSharedState(false, false);
+        }
+      });
+
+      window.addEventListener('pagehide', () => {
+        if (state.user) {
+          saveState(false);
+          flushRemotePushNow();
+        }
+      });
+
+      window.addEventListener('beforeunload', () => {
+        if (state.user) {
+          saveState(false);
+        }
+      });
+    }
+
     function initApp() {
       applyLanguage();
       updateLiveSyncButton(Boolean(getNormalizedDatabaseURL()));
+      setupAutoSaveHooks();
       if (getNormalizedDatabaseURL()) {
         pullRemoteSharedState(false, true);
-        setInterval(() => pullRemoteSharedState(false, false), 3000);
+        setInterval(() => pullRemoteSharedState(false, false), 2000);
       }
       if (state.user) {
         bootAuthenticatedApp();
