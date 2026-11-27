@@ -1551,6 +1551,76 @@
       lastLocalMutationAt = Date.now();
     }
 
+    function compressImageFile(file, maxDim = 480, quality = 0.82) {
+      return new Promise((resolve) => {
+        if (!file) return resolve(null);
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const img = new Image();
+          img.onload = () => {
+            let w = img.width || maxDim;
+            let h = img.height || maxDim;
+            if (w > maxDim || h > maxDim) {
+              if (w > h) {
+                h = Math.round((h * maxDim) / w);
+                w = maxDim;
+              } else {
+                w = Math.round((w * maxDim) / h);
+                h = maxDim;
+              }
+            }
+            const canvas = document.createElement('canvas');
+            canvas.width = w;
+            canvas.height = h;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) return resolve(e.target.result);
+            ctx.drawImage(img, 0, 0, w, h);
+            try {
+              resolve(canvas.toDataURL('image/webp', quality));
+            } catch (err) {
+              resolve(canvas.toDataURL('image/jpeg', quality));
+            }
+          };
+          img.onerror = () => resolve(e.target.result);
+          img.src = e.target.result;
+        };
+        reader.onerror = () => resolve(null);
+        reader.readAsDataURL(file);
+      });
+    }
+
+    async function pushCharactersDedicated() {
+      const dbUrl = getNormalizedDatabaseURL();
+      if (!dbUrl) return;
+      try {
+        await fetch(`${dbUrl}/monsunoVaultCharacters.json`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            updatedAt: Date.now(),
+            items: state.characters
+          })
+        });
+      } catch (e) {}
+    }
+
+    async function pullCharactersDedicated() {
+      const dbUrl = getNormalizedDatabaseURL();
+      if (!dbUrl) return false;
+      try {
+        const res = await fetch(`${dbUrl}/monsunoVaultCharacters.json`, { cache: 'no-store' });
+        if (!res.ok) return false;
+        const data = await res.json();
+        if (data && Array.isArray(data.items) && data.items.length > 0) {
+          if (JSON.stringify(data.items) !== JSON.stringify(state.characters)) {
+            state.characters = data.items;
+            return true;
+          }
+        }
+      } catch (e) {}
+      return false;
+    }
+
     function scheduleRemotePush() {
       const dbUrl = getNormalizedDatabaseURL();
       if (!dbUrl) return;
@@ -1570,13 +1640,14 @@
     }
 
     let isPullingRemote = false;
-    async function pullRemoteSharedState(showAlertOnFirst = false) {
+    async function pullRemoteSharedState(showAlertOnFirst = false, forceInitial = false) {
       const dbUrl = getNormalizedDatabaseURL();
       if (!dbUrl || isPullingRemote) return;
       // Yerel bir onay/değişiklikten hemen sonra eski uzak verinin üzerine yazmasını engelle
-      if (Date.now() - lastLocalMutationAt < 2500) return;
+      if (!forceInitial && Date.now() - lastLocalMutationAt < 2500) return;
       isPullingRemote = true;
       try {
+        const dedicatedCharsUpdated = await pullCharactersDedicated();
         const res = await fetch(`${dbUrl}/monsunoVaultShared.json`, { cache: 'no-store' });
         if (!res.ok) {
           updateLiveSyncButton(false);
@@ -1590,11 +1661,11 @@
         }
 
         // Uzak veri yerel son işlemden daha eskiyse geri çekip üzerine yazma
-        if (typeof remote.updatedAt === 'number' && remote.updatedAt < lastLocalMutationAt) {
+        if (!forceInitial && typeof remote.updatedAt === 'number' && remote.updatedAt < lastLocalMutationAt) {
           return;
         }
 
-        let changed = false;
+        let changed = dedicatedCharsUpdated;
         if (Array.isArray(remote.users) && remote.users.length) {
           let mergedUsers = remote.users.slice();
           if (!mergedUsers.some(u => (u.username || '').toLowerCase() === OWNER_USERNAME)) {
@@ -1605,7 +1676,7 @@
             changed = true;
           }
         }
-        if (Array.isArray(remote.characters) && remote.characters.length && JSON.stringify(remote.characters) !== JSON.stringify(state.characters)) {
+        if (!dedicatedCharsUpdated && Array.isArray(remote.characters) && remote.characters.length && JSON.stringify(remote.characters) !== JSON.stringify(state.characters)) {
           state.characters = remote.characters;
           changed = true;
         }
@@ -1858,7 +1929,7 @@
       if (state.activeSection === 'market') renderMarket();
     }
 
-    function saveState(syncRemote = true) {
+    function saveState(syncRemote = true, syncChars = false) {
       markLocalMutation();
       try {
         localStorage.setItem('mv3_lang', state.lang);
@@ -1872,7 +1943,15 @@
         localStorage.setItem('mv3_market', JSON.stringify(state.market));
         localStorage.setItem('mv3_tickets', JSON.stringify(state.tickets));
         localStorage.setItem('mv3_reports', JSON.stringify(state.reports));
-      } catch (e) {}
+      } catch (e) {
+        try {
+          localStorage.setItem('mv3_characters', JSON.stringify(state.characters));
+          localStorage.setItem('mv3_user_collections', JSON.stringify(state.userCollections));
+        } catch (err) {}
+      }
+      if (syncChars) {
+        pushCharactersDedicated();
+      }
       if (syncRemote) {
         scheduleRemotePush();
       }
@@ -2293,9 +2372,8 @@
         return;
       }
 
-      const reader = new FileReader();
-      reader.onload = e => {
-        const photoData = e.target.result;
+      compressImageFile(fileInput.files[0], 640, 0.8).then(photoData => {
+        if (!photoData) return;
         state.userCollections[userKey][charId][slotKey] = { status: 'pending', photo: photoData };
         state.queue.unshift({
           id: 'req-' + Date.now(),
@@ -2312,8 +2390,7 @@
         renderCollection();
         openVerifyModal(charId);
         showToast('Fotoğraf site yöneticisine onaya gönderildi.');
-      };
-      reader.readAsDataURL(fileInput.files[0]);
+      });
     }
 
     function removeOwnSlotTick(charId, slotKey) {
@@ -2345,18 +2422,16 @@
           noCapsule,
           image: imgData || `https://placehold.co/320x320/0f172a/38bdf8?text=${encodeURIComponent(name)}`
         });
-        saveState(true);
+        saveState(true, true);
         updateStats();
         renderCollection();
         closeModal('add-char-modal');
         event.target.reset();
-        showToast(`${name} vitrine eklendi.`);
+        showToast(`${name} kalıcı olarak vitrine kaydedildi.`);
       };
 
       if (fileInput.files?.[0]) {
-        const reader = new FileReader();
-        reader.onload = e => finish(e.target.result);
-        reader.readAsDataURL(fileInput.files[0]);
+        compressImageFile(fileInput.files[0], 420, 0.82).then(imgData => finish(imgData));
       } else {
         finish(null);
       }
@@ -2408,19 +2483,17 @@
       const fileInput = document.getElementById(`edit-file-${charId}`);
 
       const apply = () => {
-        saveState(true);
+        saveState(true, true);
         updateStats();
         renderCollection();
-        showToast(`${char.name} güncellendi.`);
+        showToast(`${char.name} kalıcı olarak güncellendi.`);
       };
 
       if (fileInput?.files?.[0]) {
-        const reader = new FileReader();
-        reader.onload = e => {
-          char.image = e.target.result;
+        compressImageFile(fileInput.files[0], 420, 0.82).then(imgData => {
+          if (imgData) char.image = imgData;
           apply();
-        };
-        reader.readAsDataURL(fileInput.files[0]);
+        });
       } else {
         apply();
       }
@@ -2428,11 +2501,11 @@
 
     function deleteCharacter(charId) {
       state.characters = state.characters.filter(c => c.id !== charId);
-      saveState(true);
+      saveState(true, true);
       updateStats();
       renderCollection();
       openEditShowcaseModal();
-      showToast('Karakter vitrinden silindi.');
+      showToast('Karakter vitrinden kalıcı olarak silindi.');
     }
 
     function openProfileModal() {
@@ -2446,12 +2519,11 @@
     function handleProfilePhotoChange(event) {
       const file = event.target.files?.[0];
       if (!file) return;
-      const reader = new FileReader();
-      reader.onload = e => {
-        state.pendingProfileAvatar = e.target.result;
-        document.getElementById('profile-preview-avatar').src = e.target.result;
-      };
-      reader.readAsDataURL(file);
+      compressImageFile(file, 256, 0.82).then(imgData => {
+        if (!imgData) return;
+        state.pendingProfileAvatar = imgData;
+        document.getElementById('profile-preview-avatar').src = imgData;
+      });
     }
 
     function handleSaveProfile(event) {
@@ -2613,21 +2685,20 @@
       const fileInput = document.getElementById('photo-chat-file');
       const caption = document.getElementById('photo-chat-caption').value.trim();
       if (!fileInput?.files?.[0]) return;
-      const reader = new FileReader();
-      reader.onload = e => {
+      compressImageFile(fileInput.files[0], 720, 0.8).then(photoData => {
+        if (!photoData) return;
         state.photoChat.unshift({
           id: 'pchat-' + Date.now(),
           username: state.user.username,
           displayName: state.user.displayName,
-          photo: e.target.result,
+          photo: photoData,
           caption
         });
         event.target.reset();
         saveState(true);
         renderPhotoChat();
         showToast('Fotoğraf paylaşıldı!');
-      };
-      reader.readAsDataURL(fileInput.files[0]);
+      });
     }
 
     function deletePhotoChatItem(id) {
@@ -2802,9 +2873,7 @@
       };
 
       if (photoInput?.files?.[0]) {
-        const reader = new FileReader();
-        reader.onload = e => saveListing(e.target.result);
-        reader.readAsDataURL(photoInput.files[0]);
+        compressImageFile(photoInput.files[0], 640, 0.8).then(photoData => saveListing(photoData));
       } else {
         saveListing(null);
       }
@@ -3203,8 +3272,8 @@
       applyLanguage();
       updateLiveSyncButton(Boolean(getNormalizedDatabaseURL()));
       if (getNormalizedDatabaseURL()) {
-        pullRemoteSharedState(false);
-        setInterval(() => pullRemoteSharedState(false), 3000);
+        pullRemoteSharedState(false, true);
+        setInterval(() => pullRemoteSharedState(false, false), 3000);
       }
       if (state.user) {
         bootAuthenticatedApp();
@@ -3214,4 +3283,4 @@
     initApp();
   </script>
 </body>
-</html></selection-tag>
+</html>
