@@ -621,6 +621,25 @@
   <!-- Toast Bildirim Kutusu -->
   <div id="toast-box" class="hidden fixed bottom-5 right-5 z-[60] glass-panel px-4 py-3 rounded-2xl border border-core-400/50 text-xs font-bold text-white shadow-2xl"></div>
 
+  <!-- Doğrulama Fotoğrafı Büyük Görüntüleme Modalı -->
+  <div id="photo-lightbox-modal" onclick="if(event.target===this)closePhotoLightbox()" class="hidden fixed inset-0 z-[70] bg-black/90 backdrop-blur-md flex items-center justify-center p-3 sm:p-6">
+    <div class="glass-panel w-full max-w-4xl rounded-3xl p-4 sm:p-6 border border-slate-700 space-y-4 max-h-[92vh] flex flex-col">
+      <div class="flex items-center justify-between gap-3 border-b border-slate-800 pb-3">
+        <div>
+          <h3 id="lightbox-title" class="font-display font-black text-sm sm:text-base text-white">DOĞRULAMA FOTOĞRAFI</h3>
+          <p id="lightbox-subtitle" class="text-xs text-slate-400"></p>
+        </div>
+        <button type="button" onclick="closePhotoLightbox()" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-extrabold text-white">
+          ✕ Kapat
+        </button>
+      </div>
+      <div class="flex-1 min-h-0 flex items-center justify-center bg-slate-950/90 rounded-2xl p-2 sm:p-4 border border-slate-800/80 overflow-auto">
+        <img id="lightbox-image" src="" alt="Büyük Doğrulama Fotoğrafı"
+          class="max-w-full max-h-[70vh] w-auto h-auto object-contain rounded-xl shadow-2xl select-none" />
+      </div>
+    </div>
+  </div>
+
   <script>
     const OWNER_USERNAME = 'knyazmonsuno';
     const OWNER_PASSWORD = 'knyazsuno58';
@@ -2228,6 +2247,30 @@
       document.getElementById(id)?.classList.add('hidden');
     }
 
+    function openPhotoLightbox(reqId) {
+      const req = state.queue.find(r => r.id === reqId);
+      if (!req || !req.photo) return;
+      document.getElementById('lightbox-title').textContent = `${req.charName} — ${req.slotLabel}`;
+      document.getElementById('lightbox-subtitle').textContent = `Gönderen: ${req.displayName} (@${req.username})`;
+      document.getElementById('lightbox-image').src = req.photo;
+      openModal('photo-lightbox-modal');
+    }
+
+    function closePhotoLightbox() {
+      closeModal('photo-lightbox-modal');
+      const img = document.getElementById('lightbox-image');
+      if (img) img.src = '';
+    }
+
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') {
+        const lightbox = document.getElementById('photo-lightbox-modal');
+        if (lightbox && !lightbox.classList.contains('hidden')) {
+          closePhotoLightbox();
+        }
+      }
+    });
+
     function applyLanguage() {
       const lang = TRANSLATIONS[state.lang] ? state.lang : 'tr';
       const dict = TRANSLATIONS[lang];
@@ -2439,43 +2482,77 @@
       renderCollection();
     }
 
-    function renderSlotHex(label, slotData, disabled = false) {
-      if (disabled) {
-        return `
-          <div class="flex flex-col items-center opacity-45">
-            <div class="w-11 h-11 hex-badge bg-slate-800 border border-slate-700 flex items-center justify-center text-[10px] font-bold text-slate-400">
-              YOK
-            </div>
-            <span class="text-[10px] font-semibold text-slate-500 mt-1">${label}</span>
-          </div>
-        `;
+    function renderSlotHex(label, slotData, isNone) {
+      const approved = slotData?.status === 'approved';
+      const pending = slotData?.status === 'pending';
+      let badgeClasses = 'bg-slate-800/90 text-slate-400 border border-slate-700';
+      let iconText = '•';
+
+      if (isNone) {
+        badgeClasses = 'bg-slate-900/80 text-slate-500 border border-slate-800';
+        iconText = '✕';
+      } else if (approved) {
+        badgeClasses = 'bg-emerald-500/25 text-emerald-300 border border-emerald-400/60';
+        iconText = '✓';
+      } else if (pending) {
+        badgeClasses = 'bg-amber-500/25 text-amber-300 border border-amber-400/60';
+        iconText = '⏳';
       }
-      const status = slotData?.status || 'none';
-      const badgeClass = status === 'approved'
-        ? 'bg-emerald-500 text-slate-950 font-black'
-        : status === 'pending'
-          ? 'bg-amber-400 text-slate-950 font-black'
-          : 'bg-slate-800/90 text-slate-400';
-      const icon = status === 'approved' ? '✓' : status === 'pending' ? '⏳' : '';
+
       return `
-        <div class="flex flex-col items-center">
-          <div class="w-11 h-11 hex-badge ${badgeClass} flex items-center justify-center text-sm shadow">
-            ${icon}
+        <div class="flex flex-col items-center gap-1">
+          <div class="w-9 h-9 hex-badge ${badgeClasses} flex items-center justify-center text-xs font-black">
+            ${iconText}
           </div>
-          <span class="text-[10px] font-semibold text-slate-300 mt-1">${label}</span>
+          <span class="text-[10px] font-bold text-slate-300">${escapeHTML(isNone ? t('slotNone') : label)}</span>
         </div>
       `;
+    }
+
+    function normalizeSearchText(str) {
+      return String(str || '')
+        .toLocaleLowerCase('tr')
+        .normalize('NFKD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/ı/g, 'i')
+        .replace(/[^a-z0-9\s-]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    }
+
+    function matchesCharacterSearch(char, rawQuery) {
+      const q = normalizeSearchText(rawQuery);
+      if (!q) return true;
+
+      const nameNorm = normalizeSearchText(char.name);
+      const factionNorm = normalizeSearchText(char.faction);
+      const nameCompact = nameNorm.replace(/[\s-]/g, '');
+      const factionCompact = factionNorm.replace(/[\s-]/g, '');
+      const qCompact = q.replace(/[\s-]/g, '');
+
+      if (
+        nameNorm.includes(q) ||
+        nameCompact.includes(qCompact) ||
+        factionNorm.includes(q) ||
+        factionCompact.includes(qCompact)
+      ) {
+        return true;
+      }
+
+      const tokens = q.split(' ').filter(Boolean);
+      const combined = `${nameNorm} ${factionNorm}`;
+      return tokens.length > 0 && tokens.every(tok => combined.includes(tok));
     }
 
     function renderCollection() {
       const grid = document.getElementById('collection-grid');
       if (!grid || !state.user) return;
-      const query = (document.getElementById('collection-search')?.value || '').trim().toLowerCase();
+      const query = document.getElementById('collection-search')?.value || '';
       const userCol = state.userCollections[state.user.username.toLowerCase()] || {};
 
       const filtered = state.characters.filter(c => {
         const matchFaction = state.activeFactionFilter === 'ALL' || c.faction === state.activeFactionFilter;
-        const matchQuery = !query || c.name.toLowerCase().includes(query) || c.faction.toLowerCase().includes(query);
+        const matchQuery = matchesCharacterSearch(c, query);
         return matchFaction && matchQuery;
       });
 
@@ -3217,7 +3294,14 @@
         } else {
           queueGrid.innerHTML = state.queue.map(req => `
             <div class="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-3">
-              <img src="${escapeHTML(req.photo)}" alt="${escapeHTML(req.charName)}" class="w-full h-40 object-cover rounded-xl bg-slate-900" />
+              <div onclick="openPhotoLightbox('${escapeHTML(req.id)}')" title="Büyütmek için tıkla"
+                class="group relative w-full h-52 rounded-xl bg-slate-900 border border-slate-800/80 flex items-center justify-center overflow-hidden cursor-zoom-in">
+                <img src="${escapeHTML(req.photo)}" alt="${escapeHTML(req.charName)}"
+                  class="w-full h-full object-contain transition duration-200 group-hover:scale-[1.02]" />
+                <span class="pointer-events-none absolute bottom-2 right-2 px-2.5 py-1 rounded-lg bg-slate-950/85 text-[11px] font-bold text-amber-300 border border-amber-500/30">
+                  🔍 Büyüt
+                </span>
+              </div>
               <div>
                 <div class="text-xs font-extrabold text-white">${escapeHTML(req.charName)} — ${escapeHTML(req.slotLabel)}</div>
                 <div class="text-[11px] text-slate-400">Gönderen: ${escapeHTML(req.displayName)} (@${escapeHTML(req.username)})</div>
