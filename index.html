@@ -316,7 +316,7 @@
         <div id="collection-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5"></div>
       </section>
 
-      <!-- TİKLENENLER BÖLÜMÜ (TAMAMLANAN MONSUNO'LAR VE TEK TİK BİLE ATILAN PARÇALAR) -->
+      <!-- TİKLENENLER BÖLÜMÜ -->
       <section id="section-ticked" class="hidden space-y-5">
         <div class="glass-panel rounded-3xl p-4 sm:p-6 border border-slate-800/90 space-y-4">
           <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
@@ -338,7 +338,6 @@
             </div>
           </div>
 
-          <!-- Koleksiyonum Arama ve Durum Filtreleri -->
           <div class="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 pt-2 border-t border-slate-800/80">
             <input id="ticked-search" type="text" oninput="renderTickedSection()" data-i18n-placeholder="searchTickedPlaceholder" placeholder="Koleksiyonumda ara (örn: LOCK)..."
               class="w-full md:w-72 px-3.5 py-2 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-core-400" />
@@ -713,6 +712,7 @@
     const STORAGE_KEY_QUEUE_TS = 'mv3_queue_mutation_at';
     const STORAGE_KEY_DECISIONS = 'mv3_slot_decisions_v1';
     const STORAGE_KEY_OWNER_CHAR_SNAPSHOT = 'mv3_owner_characters_lock_v1';
+    const STORAGE_KEY_CHAR_IMAGES = 'mv3_char_images_map_v1';
     const CURRENCY_SYMBOLS = {
       TL: '₺',
       Dolar: '$',
@@ -1601,17 +1601,49 @@
       if (!Array.isArray(list) || list.length === 0) {
         return INITIAL_CHARACTERS.map(c => ({ ...c }));
       }
+      const savedImgMap = loadJSON(STORAGE_KEY_CHAR_IMAGES, {});
       return list
         .filter(item => item && typeof item === 'object' && item.id && item.name)
-        .map(item => ({
-          id: String(item.id),
-          name: String(item.name).trim().toUpperCase(),
-          faction: FACTION_STYLES[item.faction] ? item.faction : 'Core-Tech',
-          noCapsule: Boolean(item.noCapsule),
-          image: typeof item.image === 'string' && item.image.trim()
-            ? item.image.trim()
-            : `https://placehold.co/320x320/0f172a/38bdf8?text=${encodeURIComponent(String(item.name).trim().toUpperCase())}`
-        }));
+        .map(item => {
+          const idStr = String(item.id);
+          const upperName = String(item.name).trim().toUpperCase();
+          const defaultPlaceholder = `https://placehold.co/320x320/0f172a/38bdf8?text=${encodeURIComponent(upperName)}`;
+          const rawImg = typeof item.image === 'string' ? item.image.trim() : '';
+          const mappedImg =
+            (savedImgMap && typeof savedImgMap[idStr] === 'string' && savedImgMap[idStr].trim()) ||
+            (savedImgMap && typeof savedImgMap[`name:${upperName}`] === 'string' && savedImgMap[`name:${upperName}`].trim()) ||
+            '';
+
+          let resolvedImg = rawImg;
+          if (!resolvedImg || (resolvedImg.includes('placehold.co') && mappedImg)) {
+            resolvedImg = mappedImg || rawImg || defaultPlaceholder;
+          }
+
+          return {
+            id: idStr,
+            name: upperName,
+            faction: FACTION_STYLES[item.faction] ? item.faction : 'Core-Tech',
+            noCapsule: Boolean(item.noCapsule),
+            image: resolvedImg
+          };
+        });
+    }
+
+    function syncCharImagesMap(chars) {
+      try {
+        const map = loadJSON(STORAGE_KEY_CHAR_IMAGES, {});
+        const nextMap = (map && typeof map === 'object') ? { ...map } : {};
+        (Array.isArray(chars) ? chars : []).forEach(c => {
+          if (!c || !c.id || !c.name) return;
+          const img = typeof c.image === 'string' ? c.image.trim() : '';
+          const upperName = String(c.name).trim().toUpperCase();
+          if (img && !img.includes('placehold.co')) {
+            nextMap[String(c.id)] = img;
+            nextMap[`name:${upperName}`] = img;
+          }
+        });
+        localStorage.setItem(STORAGE_KEY_CHAR_IMAGES, JSON.stringify(nextMap));
+      } catch (e) {}
     }
 
     function loadInitialCharacters() {
@@ -1626,12 +1658,21 @@
       return INITIAL_CHARACTERS.map(c => ({ ...c }));
     }
 
-    // Karakter listelerini birleştirirken mevcut ürünlerin kaybolmasını önler
+    // Karakter listelerini birleştirirken mevcut ürünlerin ve özel görsellerin kaybolmasını önler
     function mergeCharactersLists(localList, remoteList, preferLocal = false) {
       const normLocal = normalizeCharactersArray(localList);
       const normRemote = normalizeCharactersArray(remoteList);
       const lockedOwnerChars = normalizeCharactersArray(loadJSON(STORAGE_KEY_OWNER_CHAR_SNAPSHOT, []));
       const map = new Map();
+
+      const pickBetterImage = (aImg, bImg, fallbackName = 'MONSUNO') => {
+        const aIsReal = typeof aImg === 'string' && aImg.trim() && !aImg.includes('placehold.co');
+        const bIsReal = typeof bImg === 'string' && bImg.trim() && !bImg.includes('placehold.co');
+        if (aIsReal && !bIsReal) return aImg.trim();
+        if (bIsReal && !aIsReal) return bImg.trim();
+        if (aIsReal && bIsReal) return preferLocal ? aImg.trim() : bImg.trim();
+        return (aImg && aImg.trim()) || (bImg && bImg.trim()) || `https://placehold.co/320x320/0f172a/38bdf8?text=${encodeURIComponent(fallbackName)}`;
+      };
 
       const addItem = (item) => {
         const keyByName = String(item.name || '').trim().toUpperCase();
@@ -1641,10 +1682,12 @@
           if (keyByName) map.set(keyByName, { ...item });
           return;
         }
-        if (!preferLocal) {
-          map.set(existing.id, { ...existing, ...item, id: existing.id });
-          if (keyByName) map.set(keyByName, { ...existing, ...item, id: existing.id });
-        }
+        const bestImg = pickBetterImage(existing.image, item.image, existing.name || item.name);
+        const mergedItem = preferLocal
+          ? { ...item, ...existing, id: existing.id, image: bestImg }
+          : { ...existing, ...item, id: existing.id, image: bestImg };
+        map.set(existing.id, mergedItem);
+        if (keyByName) map.set(keyByName, mergedItem);
       };
 
       if (preferLocal) {
@@ -1655,7 +1698,6 @@
         normRemote.forEach(addItem);
       }
 
-      // Kullanıcının son kaydettiği karakter kilit listesini de koruyarak eksilmeyi engelle
       if (lockedOwnerChars.length > 0) {
         lockedOwnerChars.forEach(addItem);
       }
@@ -1800,7 +1842,6 @@
       dismissedQueueIds: initialDismissedQueueIds
     };
 
-    // Aynı tarayıcıda açık diğer sekmelerle anlık senkronizasyon kanalı
     const INSTANT_CHANNEL_NAME = 'monsuno_vault_instant_sync_v1';
     let instantChannel = null;
     if (typeof BroadcastChannel !== 'undefined') {
@@ -1813,6 +1854,19 @@
 
     let activeVerifyModalCharId = null;
     let isLightboxZoomed = false;
+
+    function resolveQueuePhotoSrc(req) {
+      if (!req) return '';
+      if (typeof req.photo === 'string' && req.photo.trim().length > 10) {
+        return req.photo.trim();
+      }
+      const uKey = String(req.username || '').trim().toLowerCase();
+      const fallbackSlot = state.userCollections?.[uKey]?.[req.charId]?.[req.slotKey];
+      if (fallbackSlot && typeof fallbackSlot.photo === 'string' && fallbackSlot.photo.trim().length > 10) {
+        return fallbackSlot.photo.trim();
+      }
+      return '';
+    }
 
     function applyLightboxZoomState() {
       const img = document.getElementById('lightbox-image');
@@ -1882,10 +1936,15 @@
         applyRecordedDecisionsToCollections();
         changed = true;
       }
-      if (Array.isArray(snapshot.queue) && incomingQueueTs >= lastQueueMutationAt) {
-        const cleaned = deduplicateQueueItems(snapshot.queue, state.dismissedQueueIds, state.slotDecisions);
-        if (JSON.stringify(cleaned) !== JSON.stringify(state.queue)) {
-          state.queue = cleaned;
+      if (Array.isArray(snapshot.queue)) {
+        const cleanedIncoming = deduplicateQueueItems(snapshot.queue, state.dismissedQueueIds, state.slotDecisions);
+        const mergedQueue = deduplicateQueueItems(
+          [...(state.queue || []), ...cleanedIncoming],
+          state.dismissedQueueIds,
+          state.slotDecisions
+        );
+        if (JSON.stringify(mergedQueue) !== JSON.stringify(state.queue)) {
+          state.queue = mergedQueue;
           lastQueueMutationAt = Math.max(lastQueueMutationAt, incomingQueueTs);
           changed = true;
         }
@@ -1915,7 +1974,7 @@
         if (incomingTs > lastLocalMutationAt) {
           lastLocalMutationAt = incomingTs;
         }
-        refreshAllVisibleViews(false);
+        refreshAllVisibleViews();
       }
     }
 
@@ -1953,30 +2012,10 @@
       } else if (event.key === 'mv3_reports') {
         state.reports = loadJSON('mv3_reports', []);
       }
-      refreshAllVisibleViews(false);
+      refreshAllVisibleViews();
     });
 
-    function isUserInteractingWithControls() {
-      const activeEl = document.activeElement;
-      if (activeEl && ['INPUT', 'TEXTAREA', 'SELECT'].includes(activeEl.tagName)) {
-        return true;
-      }
-      const openModalIds = [
-        'verify-modal',
-        'add-char-modal',
-        'edit-showcase-modal',
-        'profile-modal',
-        'user-inspect-modal',
-        'create-listing-modal',
-        'photo-lightbox-modal'
-      ];
-      return openModalIds.some(id => {
-        const el = document.getElementById(id);
-        return el && !el.classList.contains('hidden');
-      });
-    }
-
-    function refreshAllVisibleViews(forceRender = true) {
+    function refreshAllVisibleViews() {
       if (!state.user) return;
       const latestMe = state.users.find(u => u.username.toLowerCase() === state.user.username.toLowerCase());
       if (latestMe?.banned) {
@@ -1987,24 +2026,21 @@
         state.user = { ...latestMe };
         const avEl = document.getElementById('header-user-avatar');
         const lblEl = document.getElementById('header-user-label');
-        if (avEl && document.activeElement !== avEl) {
-          avEl.src = state.user.avatar || 'https://placehold.co/64x64/1e293b/f8fafc?text=U';
-        }
+        if (avEl) avEl.src = state.user.avatar || 'https://placehold.co/64x64/1e293b/f8fafc?text=U';
         if (lblEl) lblEl.innerHTML = `${escapeHTML(state.user.displayName)} ${verifiedBadgeHTML(state.user.username)}`;
       }
       updateStats();
-      if (!forceRender && isUserInteractingWithControls()) {
-        return;
-      }
-      if (forceRender) {
-        if (state.activeSection === 'collection') renderCollection();
-        if (state.activeSection === 'ticked') renderTickedSection();
-        if (state.activeSection === 'chat') renderChat();
-        if (state.activeSection === 'photo-chat') renderPhotoChat();
-        if (state.activeSection === 'leaderboard') renderLeaderboard();
-        if (state.activeSection === 'market') renderMarket();
-        if (state.activeSection === 'tickets') renderTickets();
-        if (state.activeSection === 'admin' && isOwner(state.user.username)) renderAdmin();
+      if (state.activeSection === 'collection') renderCollection();
+      if (state.activeSection === 'ticked') renderTickedSection();
+      if (state.activeSection === 'chat') renderChat();
+      if (state.activeSection === 'photo-chat') renderPhotoChat();
+      if (state.activeSection === 'leaderboard') renderLeaderboard();
+      if (state.activeSection === 'market') renderMarket();
+      if (state.activeSection === 'tickets') renderTickets();
+      if (state.activeSection === 'admin' && isOwner(state.user.username)) renderAdmin();
+      const verifyModal = document.getElementById('verify-modal');
+      if (activeVerifyModalCharId && verifyModal && !verifyModal.classList.contains('hidden')) {
+        openVerifyModal(activeVerifyModalCharId);
       }
     }
 
@@ -2095,7 +2131,8 @@
 
     function openPhotoLightbox(reqId) {
       const req = state.queue.find(r => r.id === reqId);
-      if (!req || !req.photo) return;
+      const photoSrc = resolveQueuePhotoSrc(req);
+      if (!req || !photoSrc) return;
       const modal = document.getElementById('photo-lightbox-modal');
       const img = document.getElementById('lightbox-image');
       const title = document.getElementById('lightbox-title');
@@ -2103,7 +2140,7 @@
       if (!modal || !img) return;
       isLightboxZoomed = false;
       applyLightboxZoomState();
-      img.src = req.photo;
+      img.src = photoSrc;
       if (title) title.textContent = `${req.charName || 'MONSUNO'} — ${req.slotLabel || 'DOĞRULAMA'}`;
       if (subtitle) subtitle.textContent = `${req.displayName || ''} (@${req.username || ''})`;
       modal.classList.remove('hidden');
@@ -2177,14 +2214,16 @@
       } catch (e) {}
     }
 
-    function compressImageFile(file, maxDim = 480, quality = 0.82) {
+    function compressImageFile(file, maxDim = 720, quality = 0.84) {
       return new Promise((resolve) => {
         if (!file) return resolve(null);
         const reader = new FileReader();
         reader.onload = (e) => {
+          const rawDataUrl = e.target?.result;
+          if (!rawDataUrl) return resolve(null);
           const img = new Image();
           img.onload = () => {
-            const targetMaxDim = Math.max(Number(maxDim) || 480, 960);
+            const targetMaxDim = Math.max(Number(maxDim) || 720, 480);
             let w = img.width || targetMaxDim;
             let h = img.height || targetMaxDim;
             if (w > targetMaxDim || h > targetMaxDim) {
@@ -2200,18 +2239,19 @@
             canvas.width = w;
             canvas.height = h;
             const ctx = canvas.getContext('2d');
-            if (!ctx) return resolve(e.target.result);
+            if (!ctx) return resolve(rawDataUrl);
+            ctx.fillStyle = '#0f172a';
+            ctx.fillRect(0, 0, w, h);
             ctx.imageSmoothingEnabled = true;
             ctx.imageSmoothingQuality = 'high';
             ctx.drawImage(img, 0, 0, w, h);
-            try {
-              resolve(canvas.toDataURL('image/webp', Math.max(Number(quality) || 0.88, 0.9)));
-            } catch (err) {
-              resolve(canvas.toDataURL('image/jpeg', Math.max(Number(quality) || 0.88, 0.9)));
-            }
+            const jpegData = canvas.toDataURL('image/jpeg', Math.min(Math.max(Number(quality) || 0.84, 0.7), 0.9));
+            resolve(jpegData && jpegData.length > 64 ? jpegData : rawDataUrl);
           };
-          img.onerror = () => resolve(e.target.result);
-          img.src = e.target.result;
+          img.onerror = () => {
+            resolve(typeof rawDataUrl === 'string' && rawDataUrl.startsWith('data:image/') ? rawDataUrl : null);
+          };
+          img.src = rawDataUrl;
         };
         reader.onerror = () => resolve(null);
         reader.readAsDataURL(file);
@@ -2246,8 +2286,9 @@
             return false;
           }
           const normalizedRemote = normalizeCharactersArray(data.items);
-          if (JSON.stringify(normalizedRemote) !== JSON.stringify(state.characters)) {
-            state.characters = normalizedRemote;
+          const mergedChars = mergeCharactersLists(state.characters, normalizedRemote, false);
+          if (JSON.stringify(mergedChars) !== JSON.stringify(state.characters)) {
+            state.characters = mergedChars;
             lastLocalMutationAt = Math.max(lastLocalMutationAt, remoteTs);
             try {
               localStorage.setItem(STORAGE_KEY_MUTATION_TS, String(lastLocalMutationAt));
@@ -2454,12 +2495,17 @@
             return true;
           });
 
-          if (forceInitial || remoteQueueTs >= lastQueueMutationAt) {
-            if (JSON.stringify(filteredRemoteQueue) !== JSON.stringify(state.queue)) {
-              state.queue = filteredRemoteQueue;
-              lastQueueMutationAt = Math.max(lastQueueMutationAt, remoteQueueTs);
-              changed = true;
-            }
+          // Yerel onay kuyruğundaki bekleyen öğelerin kaybolmaması için mevcut ve uzak kuyruğu birleştir
+          const mergedQueue = deduplicateQueueItems(
+            [...(state.queue || []), ...filteredRemoteQueue],
+            state.dismissedQueueIds,
+            state.slotDecisions
+          );
+
+          if (JSON.stringify(mergedQueue) !== JSON.stringify(state.queue)) {
+            state.queue = mergedQueue;
+            lastQueueMutationAt = Math.max(lastQueueMutationAt, remoteQueueTs);
+            changed = true;
           }
         }
         if (!localIsNewer && Array.isArray(remote.chat) && JSON.stringify(remote.chat) !== JSON.stringify(state.chat)) {
@@ -2484,30 +2530,7 @@
         }
 
         if (changed) {
-          saveState(false, false, false, false);
-          if (state.user) {
-            const latestMe = state.users.find(u => u.username.toLowerCase() === state.user.username.toLowerCase());
-            if (latestMe?.banned) {
-              handleLogout();
-              return;
-            }
-            if (latestMe) {
-              state.user = { ...latestMe };
-              document.getElementById('header-user-avatar').src = state.user.avatar || 'https://placehold.co/64x64/1e293b/f8fafc?text=U';
-              document.getElementById('header-user-label').innerHTML = `${escapeHTML(state.user.displayName)} ${verifiedBadgeHTML(state.user.username)}`;
-            }
-            updateStats();
-            if (!isUserInteractingWithControls()) {
-              if (state.activeSection === 'collection') renderCollection();
-              if (state.activeSection === 'ticked') renderTickedSection();
-              if (state.activeSection === 'chat') renderChat();
-              if (state.activeSection === 'photo-chat') renderPhotoChat();
-              if (state.activeSection === 'leaderboard') renderLeaderboard();
-              if (state.activeSection === 'market') renderMarket();
-              if (state.activeSection === 'tickets') renderTickets();
-              if (state.activeSection === 'admin' && isOwner(state.user.username)) renderAdmin();
-            }
-          }
+          saveState(false);
         } else if (showAlertOnFirst) {
           showToast('Canlı veritabanı ile eşleşti.');
         }
@@ -2688,6 +2711,7 @@
     function persistCharactersNow(chars) {
       const safeChars = normalizeCharactersArray(chars);
       state.characters = safeChars;
+      syncCharImagesMap(safeChars);
       try {
         localStorage.setItem(STORAGE_KEY_CHARACTERS, JSON.stringify(safeChars));
         localStorage.setItem('mv3_characters', JSON.stringify(safeChars));
@@ -2697,7 +2721,7 @@
       } catch (e) {}
     }
 
-    function saveState(syncRemote = true, syncChars = false, queueChanged = false, shouldRefreshViews = true) {
+    function saveState(syncRemote = true, syncChars = false, queueChanged = false) {
       markLocalMutation(queueChanged);
       persistCharactersNow(state.characters);
       applyRecordedDecisionsToCollections();
@@ -2726,9 +2750,7 @@
         } catch (err) {}
       }
       broadcastInstantUpdate();
-      if (shouldRefreshViews) {
-        refreshAllVisibleViews(true);
-      }
+      refreshAllVisibleViews();
       if (syncChars) {
         pushCharactersDedicated();
       }
@@ -2851,8 +2873,11 @@
       }
 
       isSubmittingVerification = true;
-      compressImageFile(file, 1080, 0.92).then(photoData => {
-        if (!photoData) return;
+      compressImageFile(file, 720, 0.84).then(photoData => {
+        if (!photoData || !String(photoData).startsWith('data:image/')) {
+          showToast('Bu dosya formatı tarayıcı tarafından okunamadı. Lütfen JPG veya PNG fotoğraf seçin.');
+          return;
+        }
         const reqId = 'req-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
         state.userCollections[userKey] = {
           ...baseUserCol,
@@ -3046,7 +3071,7 @@
 
     function switchSection(sec) {
       state.activeSection = sec;
-      saveState(false, false, false, false);
+      saveState(false);
       const sections = ['collection', 'ticked', 'chat', 'photo-chat', 'leaderboard', 'market', 'tickets', 'support', 'admin'];
       sections.forEach(s => {
         document.getElementById(`section-${s}`)?.classList.toggle('hidden', s !== sec);
@@ -3077,7 +3102,7 @@
 
     function setFactionFilter(faction) {
       state.activeFactionFilter = faction;
-      saveState(false, false, false, false);
+      saveState(false);
       document.querySelectorAll('.faction-filter-btn').forEach(btn => {
         const btnFaction = btn.getAttribute('data-faction');
         const isActive = btnFaction === faction;
@@ -3203,10 +3228,9 @@
       }).join('');
     }
 
-    // Sadece en az 1 onaylı tiki bulunan karakterleri ve tamamlanan Monsuno'ları listeler
     function setTickedFilter(filter) {
       state.activeTickedFilter = ['all', 'full', 'partial'].includes(filter) ? filter : 'all';
-      saveState(false, false, false, false);
+      saveState(false);
       ['all', 'full', 'partial'].forEach(f => {
         const btn = document.getElementById(`ticked-filter-${f}`);
         if (!btn) return;
@@ -3428,7 +3452,7 @@
       };
 
       if (fileInput?.files?.[0]) {
-        compressImageFile(fileInput.files[0], 1080, 0.92).then(imgData => finish(imgData));
+        compressImageFile(fileInput.files[0], 720, 0.84).then(imgData => finish(imgData));
       } else {
         finish(null);
       }
@@ -3496,7 +3520,7 @@
       };
 
       if (fileInput?.files?.[0]) {
-        compressImageFile(fileInput.files[0], 1080, 0.92).then(imgData => {
+        compressImageFile(fileInput.files[0], 720, 0.84).then(imgData => {
           apply(imgData);
         });
       } else {
@@ -3702,7 +3726,7 @@
       const fileInput = document.getElementById('photo-chat-file');
       const caption = document.getElementById('photo-chat-caption').value.trim();
       if (!fileInput?.files?.[0]) return;
-      compressImageFile(fileInput.files[0], 1080, 0.92).then(photoData => {
+      compressImageFile(fileInput.files[0], 720, 0.84).then(photoData => {
         if (!photoData) return;
         state.photoChat.unshift({
           id: 'pchat-' + Date.now(),
@@ -3758,7 +3782,7 @@
 
     function setMarketFilter(filter) {
       state.activeMarketFilter = filter;
-      saveState(false, false, false, false);
+      saveState(false);
       ['all', 'wanted', 'mine'].forEach(f => {
         const btn = document.getElementById(`market-tab-${f}`);
         if (!btn) return;
@@ -3892,7 +3916,7 @@
       };
 
       if (photoInput?.files?.[0]) {
-        compressImageFile(photoInput.files[0], 1080, 0.92).then(photoData => saveListing(photoData));
+        compressImageFile(photoInput.files[0], 720, 0.84).then(photoData => saveListing(photoData));
       } else {
         saveListing(null);
       }
@@ -3928,6 +3952,17 @@
       updateStats();
       renderTickets();
       showToast('Ticket talebiniz iletildi ve kaydedildi.');
+    }
+
+    function closeTicket(id) {
+      if (!isOwner(state.user?.username)) return;
+      const tkt = state.tickets.find(t => t.id === id);
+      if (!tkt) return;
+      tkt.status = 'Çözüldü';
+      saveState(true);
+      updateStats();
+      renderAdmin();
+      showToast('Ticket çözüldü olarak işaretlendi.');
     }
 
     function renderAdminUsersList() {
@@ -3986,11 +4021,16 @@
         if (!state.queue.length) {
           queueGrid.innerHTML = `<div class="col-span-full text-xs text-slate-500 py-4">Bekleyen fotoğraf onayı yok.</div>`;
         } else {
-          queueGrid.innerHTML = state.queue.map(req => `
+          queueGrid.innerHTML = state.queue.map(req => {
+            const safePhotoSrc = resolveQueuePhotoSrc(req);
+            const fallbackImg = `https://placehold.co/480x320/0f172a/f59e0b?text=${encodeURIComponent((req.charName || 'GORSEL') + ' - YENIDEN YUKLENMELI')}`;
+            return `
             <div class="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-3">
               <div onclick="openPhotoLightbox('${escapeHTML(req.id)}')" title="Büyütmek için tıkla"
                 class="group relative w-full h-52 rounded-xl bg-slate-900 border border-slate-800/80 flex items-center justify-center overflow-hidden cursor-zoom-in">
-                <img src="${escapeHTML(req.photo)}" alt="${escapeHTML(req.charName)}"
+                <img src="${escapeHTML(safePhotoSrc)}" alt="${escapeHTML(req.charName)}"
+                  data-fallback="${escapeHTML(fallbackImg)}"
+                  onerror="this.onerror=null;this.src=this.dataset.fallback;"
                   class="w-full h-full object-contain transition duration-200 group-hover:scale-[1.02]" />
                 <span class="pointer-events-none absolute bottom-2 right-2 px-2.5 py-1 rounded-lg bg-slate-950/85 text-[11px] font-bold text-amber-300 border border-amber-500/30">
                   🔍 Büyüt
@@ -4011,7 +4051,8 @@
                 </button>
               </div>
             </div>
-          `).join('');
+          `;
+          }).join('');
         }
       }
 
@@ -4190,7 +4231,6 @@
       showToast(target.banned ? `${target.displayName} banlandı.` : `${target.displayName} banı kaldırıldı.`);
     }
 
-    // Yöneticiye kayıtlı hesapları ve ilgili kullanıcı verilerini kalıcı olarak silme yetkisi verir
     function deleteUserAccount(username) {
       if (!isOwner(state.user?.username)) return;
       const target = state.users.find(u => u.username.toLowerCase() === username.toLowerCase());
@@ -4383,7 +4423,7 @@
       setupAutoSaveHooks();
       if (getNormalizedDatabaseURL()) {
         pullRemoteSharedState(false, true);
-        setInterval(() => pullRemoteSharedState(false, false), 2000);
+        setInterval(() => pullRemoteSharedState(false, false), 1500);
       }
       if (state.user) {
         bootAuthenticatedApp();
