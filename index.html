@@ -748,7 +748,7 @@
       },
       'Shadow': {
         cardBg: 'bg-gradient-to-b from-neutral-600/90 via-stone-700/85 to-neutral-900 border-neutral-400/50',
-        plateBg: 'bg-neutral-400 text-neutral-950',
+        plateBg: 'bg-neutral-400 text-slate-950',
         badgeText: 'text-neutral-200'
       }
     };
@@ -1597,6 +1597,16 @@
       }
     }
 
+    function isValidPhotoDataOrUrl(val) {
+      if (typeof val !== 'string') return false;
+      const s = val.trim();
+      if (!s) return false;
+      if (s.startsWith('data:image/')) return s.length > 64;
+      if (s.startsWith('blob:')) return s.length > 10;
+      if (/^https?:\/\//i.test(s)) return true;
+      return false;
+    }
+
     function normalizeCharactersArray(list) {
       if (!Array.isArray(list) || list.length === 0) {
         return INITIAL_CHARACTERS.map(c => ({ ...c }));
@@ -1615,8 +1625,8 @@
             '';
 
           let resolvedImg = rawImg;
-          if (!resolvedImg || (resolvedImg.includes('placehold.co') && mappedImg)) {
-            resolvedImg = mappedImg || rawImg || defaultPlaceholder;
+          if (!isValidPhotoDataOrUrl(resolvedImg) || (resolvedImg.includes('placehold.co') && isValidPhotoDataOrUrl(mappedImg))) {
+            resolvedImg = (isValidPhotoDataOrUrl(mappedImg) ? mappedImg : '') || (isValidPhotoDataOrUrl(rawImg) ? rawImg : '') || defaultPlaceholder;
           }
 
           return {
@@ -1637,7 +1647,7 @@
           if (!c || !c.id || !c.name) return;
           const img = typeof c.image === 'string' ? c.image.trim() : '';
           const upperName = String(c.name).trim().toUpperCase();
-          if (img && !img.includes('placehold.co')) {
+          if (isValidPhotoDataOrUrl(img) && !img.includes('placehold.co')) {
             nextMap[String(c.id)] = img;
             nextMap[`name:${upperName}`] = img;
           }
@@ -1666,12 +1676,14 @@
       const map = new Map();
 
       const pickBetterImage = (aImg, bImg, fallbackName = 'MONSUNO') => {
-        const aIsReal = typeof aImg === 'string' && aImg.trim() && !aImg.includes('placehold.co');
-        const bIsReal = typeof bImg === 'string' && bImg.trim() && !bImg.includes('placehold.co');
-        if (aIsReal && !bIsReal) return aImg.trim();
-        if (bIsReal && !aIsReal) return bImg.trim();
-        if (aIsReal && bIsReal) return preferLocal ? aImg.trim() : bImg.trim();
-        return (aImg && aImg.trim()) || (bImg && bImg.trim()) || `https://placehold.co/320x320/0f172a/38bdf8?text=${encodeURIComponent(fallbackName)}`;
+        const aIsReal = isValidPhotoDataOrUrl(aImg) && !String(aImg).includes('placehold.co');
+        const bIsReal = isValidPhotoDataOrUrl(bImg) && !String(bImg).includes('placehold.co');
+        if (aIsReal && !bIsReal) return String(aImg).trim();
+        if (bIsReal && !aIsReal) return String(bImg).trim();
+        if (aIsReal && bIsReal) return preferLocal ? String(aImg).trim() : String(bImg).trim();
+        return (isValidPhotoDataOrUrl(aImg) ? String(aImg).trim() : '') ||
+          (isValidPhotoDataOrUrl(bImg) ? String(bImg).trim() : '') ||
+          `https://placehold.co/320x320/0f172a/38bdf8?text=${encodeURIComponent(fallbackName)}`;
       };
 
       const addItem = (item) => {
@@ -1857,13 +1869,32 @@
 
     function resolveQueuePhotoSrc(req) {
       if (!req) return '';
-      if (typeof req.photo === 'string' && req.photo.trim().length > 10) {
+      if (isValidPhotoDataOrUrl(req.photo)) {
         return req.photo.trim();
       }
       const uKey = String(req.username || '').trim().toLowerCase();
       const fallbackSlot = state.userCollections?.[uKey]?.[req.charId]?.[req.slotKey];
-      if (fallbackSlot && typeof fallbackSlot.photo === 'string' && fallbackSlot.photo.trim().length > 10) {
+      if (fallbackSlot && isValidPhotoDataOrUrl(fallbackSlot.photo)) {
         return fallbackSlot.photo.trim();
+      }
+      const diskCollections = loadJSON('mv3_user_collections', {});
+      const diskSlot = diskCollections?.[uKey]?.[req.charId]?.[req.slotKey];
+      if (diskSlot && isValidPhotoDataOrUrl(diskSlot.photo)) {
+        return diskSlot.photo.trim();
+      }
+      const diskQueue = loadJSON('mv3_queue', []);
+      const diskReq = Array.isArray(diskQueue)
+        ? diskQueue.find(item => item && (
+            (req.id && String(item.id) === String(req.id)) ||
+            (
+              String(item.username || '').trim().toLowerCase() === uKey &&
+              String(item.charId || '').trim() === String(req.charId || '').trim() &&
+              String(item.slotKey || '').trim().toLowerCase() === String(req.slotKey || '').trim().toLowerCase()
+            )
+          ) && isValidPhotoDataOrUrl(item.photo))
+        : null;
+      if (diskReq) {
+        return diskReq.photo.trim();
       }
       return '';
     }
@@ -1999,7 +2030,7 @@
         state.queue = deduplicateQueueItems(loadJSON('mv3_queue', []), state.dismissedQueueIds, state.slotDecisions);
       } else if (event.key === 'mv3_users') {
         state.users = loadJSON('mv3_users', state.users);
-      } else if (event.key === STORAGE_KEY_CHARACTERS) {
+      } else if (event.key === STORAGE_KEY_CHARACTERS || event.key === STORAGE_KEY_CHAR_IMAGES) {
         state.characters = loadInitialCharacters();
       } else if (event.key === 'mv3_chat') {
         state.chat = loadJSON('mv3_chat', []);
@@ -2130,9 +2161,12 @@
     }
 
     function openPhotoLightbox(reqId) {
-      const req = state.queue.find(r => r.id === reqId);
+      const req = state.queue.find(r => String(r.id) === String(reqId));
       const photoSrc = resolveQueuePhotoSrc(req);
-      if (!req || !photoSrc) return;
+      if (!req || !photoSrc) {
+        showToast('Bu kayıtta görüntülenecek geçerli bir fotoğraf bulunamadı.');
+        return;
+      }
       const modal = document.getElementById('photo-lightbox-modal');
       const img = document.getElementById('lightbox-image');
       const title = document.getElementById('lightbox-title');
@@ -2214,24 +2248,35 @@
       } catch (e) {}
     }
 
+    // Yüklenen her fotoğrafı (HEIC/WEBP/PNG/JPG dahil) güvenli bir JPEG data URL'e dönüştürür
     function compressImageFile(file, maxDim = 720, quality = 0.84) {
       return new Promise((resolve) => {
         if (!file) return resolve(null);
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          const rawDataUrl = e.target?.result;
-          if (!rawDataUrl) return resolve(null);
-          const img = new Image();
-          img.onload = () => {
+        const readAsDataUrlFallback = () => new Promise((res) => {
+          try {
+            const r = new FileReader();
+            r.onload = (ev) => {
+              const out = typeof ev.target?.result === 'string' ? ev.target.result : null;
+              res(isValidPhotoDataOrUrl(out) ? out : null);
+            };
+            r.onerror = () => res(null);
+            r.readAsDataURL(file);
+          } catch (e) {
+            res(null);
+          }
+        });
+
+        const renderImgToCanvasDataUrl = (img) => {
+          try {
             const targetMaxDim = Math.max(Number(maxDim) || 720, 480);
-            let w = img.width || targetMaxDim;
-            let h = img.height || targetMaxDim;
+            let w = img.naturalWidth || img.width || targetMaxDim;
+            let h = img.naturalHeight || img.height || targetMaxDim;
             if (w > targetMaxDim || h > targetMaxDim) {
               if (w > h) {
-                h = Math.round((h * targetMaxDim) / w);
+                h = Math.max(1, Math.round((h * targetMaxDim) / w));
                 w = targetMaxDim;
               } else {
-                w = Math.round((w * targetMaxDim) / h);
+                w = Math.max(1, Math.round((w * targetMaxDim) / h));
                 h = targetMaxDim;
               }
             }
@@ -2239,22 +2284,71 @@
             canvas.width = w;
             canvas.height = h;
             const ctx = canvas.getContext('2d');
-            if (!ctx) return resolve(rawDataUrl);
+            if (!ctx) return null;
             ctx.fillStyle = '#0f172a';
             ctx.fillRect(0, 0, w, h);
             ctx.imageSmoothingEnabled = true;
             ctx.imageSmoothingQuality = 'high';
             ctx.drawImage(img, 0, 0, w, h);
-            const jpegData = canvas.toDataURL('image/jpeg', Math.min(Math.max(Number(quality) || 0.84, 0.7), 0.9));
-            resolve(jpegData && jpegData.length > 64 ? jpegData : rawDataUrl);
+            const jpegData = canvas.toDataURL('image/jpeg', Math.min(Math.max(Number(quality) || 0.84, 0.72), 0.92));
+            return isValidPhotoDataOrUrl(jpegData) ? jpegData : null;
+          } catch (e) {
+            return null;
+          }
+        };
+
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+          const rawDataUrl = e.target?.result;
+          if (!rawDataUrl || typeof rawDataUrl !== 'string') {
+            return resolve(await readAsDataUrlFallback());
+          }
+          const img = new Image();
+          img.onload = async () => {
+            const compressed = renderImgToCanvasDataUrl(img);
+            if (compressed) return resolve(compressed);
+            return resolve(isValidPhotoDataOrUrl(rawDataUrl) ? rawDataUrl : await readAsDataUrlFallback());
           };
-          img.onerror = () => {
-            resolve(typeof rawDataUrl === 'string' && rawDataUrl.startsWith('data:image/') ? rawDataUrl : null);
+          img.onerror = async () => {
+            if (typeof createImageBitmap === 'function') {
+              try {
+                const bitmap = await createImageBitmap(file);
+                const canvas = document.createElement('canvas');
+                const targetMaxDim = Math.max(Number(maxDim) || 720, 480);
+                let w = bitmap.width || targetMaxDim;
+                let h = bitmap.height || targetMaxDim;
+                if (w > targetMaxDim || h > targetMaxDim) {
+                  if (w > h) {
+                    h = Math.max(1, Math.round((h * targetMaxDim) / w));
+                    w = targetMaxDim;
+                  } else {
+                    w = Math.max(1, Math.round((w * targetMaxDim) / h));
+                    h = targetMaxDim;
+                  }
+                }
+                canvas.width = w;
+                canvas.height = h;
+                const ctx = canvas.getContext('2d');
+                if (ctx) {
+                  ctx.fillStyle = '#0f172a';
+                  ctx.fillRect(0, 0, w, h);
+                  ctx.drawImage(bitmap, 0, 0, w, h);
+                  const bmpUrl = canvas.toDataURL('image/jpeg', 0.84);
+                  if (typeof bitmap.close === 'function') bitmap.close();
+                  if (isValidPhotoDataOrUrl(bmpUrl)) return resolve(bmpUrl);
+                }
+              } catch (err) {}
+            }
+            return resolve(isValidPhotoDataOrUrl(rawDataUrl) ? rawDataUrl : await readAsDataUrlFallback());
           };
           img.src = rawDataUrl;
         };
-        reader.onerror = () => resolve(null);
-        reader.readAsDataURL(file);
+        reader.onerror = async () => resolve(await readAsDataUrlFallback());
+        try {
+          reader.readAsDataURL(file);
+        } catch (err) {
+          readAsDataUrlFallback().then(resolve);
+        }
       });
     }
 
@@ -2435,16 +2529,22 @@
                 } else if (remoteSlot && !localSlot) {
                   nextCharSlots[sKey] = { ...remoteSlot };
                 } else if (localSlot && remoteSlot) {
-                  if (remoteTsSlot > localTs) {
-                    nextCharSlots[sKey] = { ...remoteSlot };
-                  } else if (localTs > remoteTsSlot) {
-                    nextCharSlots[sKey] = { ...localSlot };
-                  } else {
-                    const priority = { rejected: 4, revoked: 4, approved: 3, pending: 2, none: 1 };
-                    const pLocal = priority[localSlot.status] || 0;
-                    const pRemote = priority[remoteSlot.status] || 0;
-                    nextCharSlots[sKey] = pRemote >= pLocal ? { ...remoteSlot } : { ...localSlot };
+                  const chosen = remoteTsSlot > localTs
+                    ? { ...remoteSlot }
+                    : localTs > remoteTsSlot
+                      ? { ...localSlot }
+                      : (() => {
+                          const priority = { rejected: 4, revoked: 4, approved: 3, pending: 2, none: 1 };
+                          const pLocal = priority[localSlot.status] || 0;
+                          const pRemote = priority[remoteSlot.status] || 0;
+                          return pRemote >= pLocal ? { ...remoteSlot } : { ...localSlot };
+                        })();
+                  if (!isValidPhotoDataOrUrl(chosen.photo)) {
+                    const bestPhoto = (isValidPhotoDataOrUrl(localSlot.photo) ? localSlot.photo : '') ||
+                      (isValidPhotoDataOrUrl(remoteSlot.photo) ? remoteSlot.photo : '');
+                    if (bestPhoto) chosen.photo = bestPhoto;
                   }
+                  nextCharSlots[sKey] = chosen;
                 }
 
                 if (
@@ -2495,12 +2595,19 @@
             return true;
           });
 
-          // Yerel onay kuyruğundaki bekleyen öğelerin kaybolmaması için mevcut ve uzak kuyruğu birleştir
           const mergedQueue = deduplicateQueueItems(
             [...(state.queue || []), ...filteredRemoteQueue],
             state.dismissedQueueIds,
             state.slotDecisions
-          );
+          ).map(item => {
+            if (!isValidPhotoDataOrUrl(item.photo)) {
+              const recoveredPhoto = resolveQueuePhotoSrc(item);
+              if (recoveredPhoto) {
+                return { ...item, photo: recoveredPhoto };
+              }
+            }
+            return item;
+          });
 
           if (JSON.stringify(mergedQueue) !== JSON.stringify(state.queue)) {
             state.queue = mergedQueue;
@@ -2747,6 +2854,7 @@
         try {
           persistCharactersNow(state.characters);
           localStorage.setItem('mv3_user_collections', JSON.stringify(state.userCollections));
+          localStorage.setItem('mv3_queue', JSON.stringify(state.queue));
         } catch (err) {}
       }
       broadcastInstantUpdate();
@@ -2874,8 +2982,8 @@
 
       isSubmittingVerification = true;
       compressImageFile(file, 720, 0.84).then(photoData => {
-        if (!photoData || !String(photoData).startsWith('data:image/')) {
-          showToast('Bu dosya formatı tarayıcı tarafından okunamadı. Lütfen JPG veya PNG fotoğraf seçin.');
+        if (!photoData || !isValidPhotoDataOrUrl(photoData)) {
+          showToast('Bu dosya formatı tarayıcı tarafından okunamadı. Lütfen JPG, PNG veya WEBP fotoğraf seçin.');
           return;
         }
         const reqId = 'req-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
@@ -3205,7 +3313,7 @@
 
             <div class="w-40 h-40 hex-main showcase-photo-frame p-1.5 shadow-inner flex items-center justify-center">
               <img src="${escapeHTML(char.image)}" alt="${escapeHTML(char.name)}"
-                onerror="this.src='https://placehold.co/320x320/0f172a/38bdf8?text=${encodeURIComponent(char.name)}'"
+                onerror="this.onerror=null;this.src='https://placehold.co/320x320/0f172a/38bdf8?text=${encodeURIComponent(char.name)}'"
                 class="showcase-photo-img hex-main" />
             </div>
 
@@ -3311,7 +3419,7 @@
 
             <div class="w-40 h-40 hex-main showcase-photo-frame p-1.5 shadow-inner flex items-center justify-center">
               <img src="${escapeHTML(char.image)}" alt="${escapeHTML(char.name)}"
-                onerror="this.src='https://placehold.co/320x320/0f172a/38bdf8?text=${encodeURIComponent(char.name)}'"
+                onerror="this.onerror=null;this.src='https://placehold.co/320x320/0f172a/38bdf8?text=${encodeURIComponent(char.name)}'"
                 class="showcase-photo-img hex-main" />
             </div>
 
@@ -3365,6 +3473,11 @@
               <span class="text-xs font-extrabold text-white">${s.label}</span>
               <span class="text-xs">${statusText}</span>
             </div>
+            ${isValidPhotoDataOrUrl(slotData.photo) ? `
+              <div class="w-full h-28 rounded-xl bg-slate-900 border border-slate-800/80 flex items-center justify-center overflow-hidden">
+                <img src="${escapeHTML(slotData.photo)}" alt="${escapeHTML(s.label)}" class="w-full h-full object-contain p-1.5" />
+              </div>
+            ` : ''}
             ${slotData.status === 'approved' ? `
               <button type="button" onclick="removeOwnSlotTick('${char.id}', '${s.key}')"
                 class="w-full py-2 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/30 text-xs font-bold transition">
@@ -3438,7 +3551,9 @@
             name,
             faction,
             noCapsule,
-            image: imgData || `https://placehold.co/320x320/0f172a/38bdf8?text=${encodeURIComponent(name)}`
+            image: isValidPhotoDataOrUrl(imgData)
+              ? imgData
+              : `https://placehold.co/320x320/0f172a/38bdf8?text=${encodeURIComponent(name)}`
           }
         ]);
         persistCharactersNow(nextList);
@@ -3448,7 +3563,7 @@
         renderCollection();
         closeModal('add-char-modal');
         event.target.reset();
-        showToast(`${name} vitrine eklendi ve kaydedildi.`);
+        showToast(`${name} vitrine eklendi ve fotoğrafı kalıcı kaydedildi.`);
       };
 
       if (fileInput?.files?.[0]) {
@@ -3464,7 +3579,12 @@
       container.innerHTML = state.characters.map(char => `
         <div class="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-3">
           <div class="flex items-center justify-between gap-2">
-            <span class="font-display font-bold text-xs text-amber-300">${escapeHTML(char.name)}</span>
+            <div class="flex items-center gap-2.5">
+              <img src="${escapeHTML(char.image)}" alt="${escapeHTML(char.name)}"
+                onerror="this.onerror=null;this.src='https://placehold.co/96x96/0f172a/38bdf8?text=${encodeURIComponent(char.name)}';"
+                class="w-10 h-10 rounded-xl object-contain bg-slate-900 border border-slate-700 p-0.5" />
+              <span class="font-display font-bold text-xs text-amber-300">${escapeHTML(char.name)}</span>
+            </div>
             <button type="button" onclick="deleteCharacter('${char.id}')"
               class="px-3 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 text-xs font-bold">
               Vitrinden Sil
@@ -3509,14 +3629,15 @@
           name: updatedName,
           faction: updatedFaction,
           noCapsule: updatedNoCapsule,
-          image: newImage || item.image
+          image: isValidPhotoDataOrUrl(newImage) ? newImage : item.image
         } : item);
         persistCharactersNow(nextList);
         saveState(true, true);
         flushRemotePushNow();
         updateStats();
         renderCollection();
-        showToast(`${updatedName} kalıcı olarak güncellendi.`);
+        openEditShowcaseModal();
+        showToast(`${updatedName} fotoğrafı ve bilgileri kalıcı olarak güncellendi.`);
       };
 
       if (fileInput?.files?.[0]) {
@@ -3551,7 +3672,7 @@
       const file = event.target.files?.[0];
       if (!file || !state.user) return;
       compressImageFile(file, 256, 0.82).then(imgData => {
-        if (!imgData) return;
+        if (!isValidPhotoDataOrUrl(imgData)) return;
         state.pendingProfileAvatar = imgData;
         document.getElementById('profile-preview-avatar').src = imgData;
         const target = state.users.find(u => u.username.toLowerCase() === state.user.username.toLowerCase());
@@ -3572,7 +3693,7 @@
       const target = state.users.find(u => u.username.toLowerCase() === state.user.username.toLowerCase());
       if (target) {
         target.displayName = newDisplayName || target.displayName;
-        if (state.pendingProfileAvatar) {
+        if (isValidPhotoDataOrUrl(state.pendingProfileAvatar)) {
           target.avatar = state.pendingProfileAvatar;
         }
         state.user = { ...target };
@@ -3678,10 +3799,15 @@
       grid.innerHTML = state.photoChat.map(item => {
         const captionText = item.caption || 'Monsuno';
         const trEntry = state.translationsCache[`${lang}::pchat-${item.id}`];
+        const safePhoto = isValidPhotoDataOrUrl(item.photo)
+          ? item.photo
+          : `https://placehold.co/480x320/0f172a/38bdf8?text=${encodeURIComponent(captionText)}`;
         return `
           <div class="glass-panel rounded-3xl overflow-hidden border border-slate-800 flex flex-col">
             <div class="w-full h-56 showcase-photo-frame flex items-center justify-center">
-              <img src="${escapeHTML(item.photo)}" alt="Paylaşım" class="w-full h-full object-contain p-2" />
+              <img src="${escapeHTML(safePhoto)}" alt="Paylaşım"
+                onerror="this.onerror=null;this.src='https://placehold.co/480x320/0f172a/38bdf8?text=MONSUNO';"
+                class="w-full h-full object-contain p-2" />
             </div>
             <div class="p-4 flex-1 flex flex-col justify-between gap-2">
               <div>
@@ -3727,7 +3853,10 @@
       const caption = document.getElementById('photo-chat-caption').value.trim();
       if (!fileInput?.files?.[0]) return;
       compressImageFile(fileInput.files[0], 720, 0.84).then(photoData => {
-        if (!photoData) return;
+        if (!isValidPhotoDataOrUrl(photoData)) {
+          showToast('Fotoğraf işlenemedi, lütfen başka bir görsel seçin.');
+          return;
+        }
         state.photoChat.unshift({
           id: 'pchat-' + Date.now(),
           username: state.user.username,
@@ -3818,10 +3947,15 @@
             ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
             : 'bg-amber-500/20 text-amber-300 border-amber-500/40';
         const trEntry = state.translationsCache[`${lang}::lst-${item.id}`];
+        const safePhoto = isValidPhotoDataOrUrl(item.photo)
+          ? item.photo
+          : `https://placehold.co/480x320/0f172a/38bdf8?text=${encodeURIComponent(item.title || 'MONSUNO')}`;
         return `
           <div class="glass-panel rounded-3xl overflow-hidden border border-slate-800 flex flex-col">
             <div class="w-full h-52 showcase-photo-frame flex items-center justify-center">
-              <img src="${escapeHTML(item.photo)}" alt="${escapeHTML(item.title)}" class="w-full h-full object-contain p-2" />
+              <img src="${escapeHTML(safePhoto)}" alt="${escapeHTML(item.title)}"
+                onerror="this.onerror=null;this.src='https://placehold.co/480x320/0f172a/38bdf8?text=MONSUNO';"
+                class="w-full h-full object-contain p-2" />
             </div>
             <div class="p-4 flex-1 flex flex-col justify-between gap-3">
               <div>
@@ -3905,7 +4039,9 @@
           price: formattedPrice,
           link,
           desc,
-          photo: photoData || `https://placehold.co/480x320/0f172a/38bdf8?text=${encodeURIComponent(title)}`
+          photo: isValidPhotoDataOrUrl(photoData)
+            ? photoData
+            : `https://placehold.co/480x320/0f172a/38bdf8?text=${encodeURIComponent(title)}`
         });
         saveState(true);
         updateStats();
@@ -4028,7 +4164,7 @@
             <div class="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-3">
               <div onclick="openPhotoLightbox('${escapeHTML(req.id)}')" title="Büyütmek için tıkla"
                 class="group relative w-full h-52 rounded-xl bg-slate-900 border border-slate-800/80 flex items-center justify-center overflow-hidden cursor-zoom-in">
-                <img src="${escapeHTML(safePhotoSrc)}" alt="${escapeHTML(req.charName)}"
+                <img src="${escapeHTML(safePhotoSrc || fallbackImg)}" alt="${escapeHTML(req.charName)}"
                   data-fallback="${escapeHTML(fallbackImg)}"
                   onerror="this.onerror=null;this.src=this.dataset.fallback;"
                   class="w-full h-full object-contain transition duration-200 group-hover:scale-[1.02]" />
@@ -4186,11 +4322,12 @@
         return;
       }
       const userKey = String(req.username || '').trim().toLowerCase();
+      const resolvedPhoto = resolveQueuePhotoSrc(req);
       if (!state.userCollections[userKey]) state.userCollections[userKey] = {};
       if (!state.userCollections[userKey][req.charId]) state.userCollections[userKey][req.charId] = {};
       state.userCollections[userKey][req.charId][req.slotKey] = {
         status: 'approved',
-        photo: req.photo,
+        photo: resolvedPhoto || null,
         approvedAt: Date.now()
       };
       removeResolvedFromQueue(reqId, req);
@@ -4418,6 +4555,7 @@
     function initApp() {
       applyRecordedDecisionsToCollections();
       state.queue = deduplicateQueueItems(state.queue, state.dismissedQueueIds, state.slotDecisions);
+      syncCharImagesMap(state.characters);
       applyLanguage();
       updateLiveSyncButton(Boolean(getNormalizedDatabaseURL()));
       setupAutoSaveHooks();
