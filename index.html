@@ -2477,8 +2477,28 @@
         }
       }
       if (snapshot.userCollections && typeof snapshot.userCollections === 'object') {
-        if (JSON.stringify(snapshot.userCollections) !== JSON.stringify(state.userCollections)) {
+        const currentUserKey = String(state.user?.username || '').trim().toLowerCase();
+        const isFreshLocalOwnerMutation =
+          isOwner(currentUserKey) &&
+          lastLocalMutationAt > 0 &&
+          (Date.now() - lastLocalMutationAt) < 5000;
+
+        if (isFreshLocalOwnerMutation && snapshot.userCollections[currentUserKey]) {
+          const mergedCol = {
+            ...snapshot.userCollections,
+            [currentUserKey]: {
+              ...(snapshot.userCollections[currentUserKey] || {}),
+              ...(state.userCollections[currentUserKey] || {})
+            }
+          };
+          applyRecordedDecisionsToCollections();
+          if (JSON.stringify(mergedCol) !== JSON.stringify(state.userCollections)) {
+            state.userCollections = mergedCol;
+            changed = true;
+          }
+        } else if (JSON.stringify(snapshot.userCollections) !== JSON.stringify(state.userCollections)) {
           state.userCollections = snapshot.userCollections;
+          applyRecordedDecisionsToCollections();
           changed = true;
         }
       }
@@ -2708,6 +2728,7 @@
     }
 
     let isSubmittingVerification = false;
+    let isInstantOwnerApproving = false;
 
     function getActiveUserCollectionEntry(username, charId) {
       const userKey = String(username || '').trim().toLowerCase();
@@ -2748,7 +2769,22 @@
         )
       );
 
-      saveState(true, false, false);
+      lastLocalMutationAt = Math.max(Date.now(), approvedTs);
+      lastQueueMutationAt = lastLocalMutationAt;
+      try {
+        localStorage.setItem(STORAGE_KEY_MUTATION_TS, String(lastLocalMutationAt));
+        localStorage.setItem(STORAGE_KEY_QUEUE_TS, String(lastQueueMutationAt));
+        localStorage.setItem('mv3_user_collections', JSON.stringify(state.userCollections));
+        localStorage.setItem(STORAGE_KEY_DECISIONS, JSON.stringify(state.slotDecisions));
+        localStorage.setItem('mv3_queue', JSON.stringify(state.queue));
+      } catch (e) {}
+
+      if (instantChannel) {
+        try {
+          instantChannel.postMessage(buildSnapshotPayload(lastLocalMutationAt, lastQueueMutationAt));
+        } catch (e) {}
+      }
+
       patchRemoteSlotAndDecision(
         userKey,
         charId,
@@ -2762,6 +2798,7 @@
     }
 
     function approveAllSlotsWithoutPhoto(charId) {
+      if (isInstantOwnerApproving) return;
       if (!state.user || !isOwner(state.user.username)) return;
       const char = state.characters.find(c => c.id === charId);
       if (!char) return;
@@ -2780,34 +2817,45 @@
         return;
       }
 
-      const baseTs = Date.now();
-      missingSlots.forEach((s, idx) => {
-        applyInstantOwnerSlotApproval(charId, s.key, s.label, baseTs + idx);
-      });
+      isInstantOwnerApproving = true;
+      try {
+        const baseTs = Date.now();
+        missingSlots.forEach((s, idx) => {
+          applyInstantOwnerSlotApproval(charId, s.key, s.label, baseTs + idx);
+        });
 
-      updateStats();
-      if (state.activeSection === 'collection') renderCollection();
-      if (state.activeSection === 'ticked') renderTickedSection();
-      if (state.activeSection === 'leaderboard') renderLeaderboard();
-      openVerifyModal(charId);
-      showToast(`${char.name} için ${missingSlots.length} parça anında onaylandı!`);
+        updateStats();
+        if (state.activeSection === 'collection') renderCollection();
+        if (state.activeSection === 'ticked') renderTickedSection();
+        if (state.activeSection === 'leaderboard') renderLeaderboard();
+        openVerifyModal(charId);
+        showToast(`${char.name} için ${missingSlots.length} parça tek seferde onaylandı!`);
+      } finally {
+        isInstantOwnerApproving = false;
+      }
     }
 
     function submitSlotVerification(charId, slotKey, slotLabel) {
-      if (isSubmittingVerification) return;
+      if (isSubmittingVerification || isInstantOwnerApproving) return;
       const char = state.characters.find(c => c.id === charId);
       if (!char || !state.user) return;
 
       const { userKey, baseUserCol, mergedCharEntry } = getActiveUserCollectionEntry(state.user.username, charId);
 
       if (isOwner(state.user.username)) {
-        applyInstantOwnerSlotApproval(charId, slotKey, slotLabel, Date.now());
-        updateStats();
-        if (state.activeSection === 'collection') renderCollection();
-        if (state.activeSection === 'ticked') renderTickedSection();
-        if (state.activeSection === 'leaderboard') renderLeaderboard();
-        openVerifyModal(charId);
-        showToast(`${char.name} (${slotLabel}) anında onaylandı!`);
+        if (mergedCharEntry[slotKey]?.status === 'approved') return;
+        isInstantOwnerApproving = true;
+        try {
+          applyInstantOwnerSlotApproval(charId, slotKey, slotLabel, Date.now());
+          updateStats();
+          if (state.activeSection === 'collection') renderCollection();
+          if (state.activeSection === 'ticked') renderTickedSection();
+          if (state.activeSection === 'leaderboard') renderLeaderboard();
+          openVerifyModal(charId);
+          showToast(`${char.name} (${slotLabel}) tek seferde onaylandı!`);
+        } finally {
+          isInstantOwnerApproving = false;
+        }
         return;
       }
 
