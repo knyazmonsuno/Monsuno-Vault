@@ -1702,7 +1702,9 @@
         if (keyByName) map.set(keyByName, mergedItem);
       };
 
-      if (preferLocal) {
+      // Daha fazla karakter içeren zengin vitrin listesi (ör. 53) daha az elemanlı eski listeden (ör. 11) korunur
+      const localHasMore = normLocal.length > normRemote.length;
+      if (preferLocal || localHasMore) {
         normRemote.forEach(addItem);
         normLocal.forEach(addItem);
       } else {
@@ -2332,8 +2334,12 @@
           return;
         }
         const remoteTs = Number(remote.ts || 0);
-        if (remoteTs >= lastLocalMutationAt || isInitialBoot) {
+        const localHasLargerShowcase = Array.isArray(remote.characters) && remote.characters.length < state.characters.length;
+        if (remoteTs >= lastLocalMutationAt || isInitialBoot || localHasLargerShowcase) {
           applyIncomingInstantSnapshot(remote);
+          if (localHasLargerShowcase) {
+            saveState(true, true, true);
+          }
         }
         if (showStatus) {
           showToast('Canlı veriler güncellendi.');
@@ -2342,38 +2348,6 @@
         updateLiveSyncButton(false);
       } finally {
         isRemotePullInFlight = false;
-      }
-    }
-
-    async function pullRemoteSharedState(showStatus = false, isInitialBoot = false) {
-      const dbUrl = getNormalizedDatabaseURL();
-      if (!dbUrl) {
-        updateLiveSyncButton(false);
-        return;
-      }
-      try {
-        const res = await fetch(`${dbUrl}/mv3_vault.json`, { cache: 'no-store' });
-        if (!res.ok) {
-          updateLiveSyncButton(false);
-          return;
-        }
-        updateLiveSyncButton(true);
-        const remote = await res.json();
-        if (!remote || typeof remote !== 'object') {
-          if (isInitialBoot && state.user) {
-            flushRemotePushNow();
-          }
-          return;
-        }
-        const remoteTs = Number(remote.ts || 0);
-        if (remoteTs >= lastLocalMutationAt || isInitialBoot) {
-          applyIncomingInstantSnapshot(remote);
-        }
-        if (showStatus) {
-          showToast('Canlı veriler güncellendi.');
-        }
-      } catch (e) {
-        updateLiveSyncButton(false);
       }
     }
 
@@ -2473,6 +2447,13 @@
         const mergedChars = mergeCharactersLists(state.characters, snapshot.characters, incomingTs < lastLocalMutationAt);
         if (JSON.stringify(mergedChars) !== JSON.stringify(state.characters)) {
           state.characters = mergedChars;
+          syncCharImagesMap(state.characters);
+          try {
+            localStorage.setItem(STORAGE_KEY_CHARACTERS, JSON.stringify(state.characters));
+            if (state.characters.length > 1) {
+              localStorage.setItem(STORAGE_KEY_OWNER_CHAR_SNAPSHOT, JSON.stringify(state.characters));
+            }
+          } catch (e) {}
           changed = true;
         }
       }
@@ -2522,10 +2503,13 @@
           [...(state.queue || []), ...cleanedIncoming],
           state.dismissedQueueIds,
           state.slotDecisions
-        );
+        ).sort((a, b) => Number(b.submittedAt || 0) - Number(a.submittedAt || 0));
         if (JSON.stringify(mergedQueue) !== JSON.stringify(state.queue)) {
           state.queue = mergedQueue;
           lastQueueMutationAt = Math.max(lastQueueMutationAt, incomingQueueTs);
+          try {
+            localStorage.setItem('mv3_queue', JSON.stringify(state.queue));
+          } catch (e) {}
           changed = true;
         }
       }
@@ -2922,9 +2906,9 @@
             submittedAt: submittedTs
           },
           ...existingQueue
-        ]);
+        ]).sort((a, b) => Number(b.submittedAt || 0) - Number(a.submittedAt || 0));
         if (fileInput) fileInput.value = '';
-        saveState(true, false, true);
+        saveState(true, true, true);
         patchRemoteSlotAndDecision(
           userKey,
           charId,
@@ -2933,11 +2917,11 @@
           state.slotDecisions[makeSlotDecisionKey(userKey, charId, slotKey)],
           state.queue,
           state.dismissedQueueIds || []
-        );
+        ).then(() => flushRemotePushNow());
         updateStats();
         renderCollection();
         openVerifyModal(charId);
-        showToast(`${char.name} (${slotLabel}) gönderildi; seçtiğiniz diğer dosyalar korundu.`);
+        showToast(`${char.name} (${slotLabel}) yönetici onay kuyruğuna gönderildi!`);
       }).finally(() => {
         isSubmittingVerification = false;
       });
@@ -3038,9 +3022,10 @@
           ...latestColSnapshot.baseUserCol,
           [charId]: nextCharSlots
         };
-        state.queue = deduplicateQueueItems([...newQueueItems, ...existingQueue]);
+        state.queue = deduplicateQueueItems([...newQueueItems, ...existingQueue])
+          .sort((a, b) => Number(b.submittedAt || 0) - Number(a.submittedAt || 0));
 
-        saveState(true, false, true);
+        saveState(true, true, true);
         for (const task of patchTasks) {
           await patchRemoteSlotAndDecision(
             userKey,
@@ -3052,11 +3037,12 @@
             state.dismissedQueueIds || []
           );
         }
+        await flushRemotePushNow();
 
         updateStats();
         renderCollection();
         openVerifyModal(charId);
-        showToast(`${char.name} için ${processed.length} fotoğraf birden yönetici onayına gönderildi!`);
+        showToast(`${char.name} için ${processed.length} fotoğraf birden yönetici onay kuyruğuna gönderildi!`);
       } finally {
         isSubmittingVerification = false;
       }
