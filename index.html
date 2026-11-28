@@ -1872,6 +1872,47 @@
 
     let activeVerifyModalCharId = null;
     let isLightboxZoomed = false;
+    const pendingVerifyFileDrafts = {};
+
+    function getVerifyDraftKey(charId, slotKey) {
+      return `${String(charId || '').trim()}::${String(slotKey || '').trim().toLowerCase()}`;
+    }
+
+    function handleVerifyFileDraftChange(charId, slotKey, inputEl) {
+      const file = inputEl?.files?.[0] || null;
+      const draftKey = getVerifyDraftKey(charId, slotKey);
+      if (file) {
+        pendingVerifyFileDrafts[draftKey] = file;
+      } else {
+        delete pendingVerifyFileDrafts[draftKey];
+      }
+      const badgeEl = document.getElementById(`verify-draft-name-${slotKey}`);
+      if (badgeEl) {
+        if (file) {
+          badgeEl.textContent = `Seçilen dosya hazır: ${file.name}`;
+          badgeEl.classList.remove('hidden');
+        } else {
+          badgeEl.textContent = '';
+          badgeEl.classList.add('hidden');
+        }
+      }
+      updateBulkVerifyButtonVisibility(charId);
+    }
+
+    function updateBulkVerifyButtonVisibility(charId) {
+      const bulkBtn = document.getElementById('verify-send-all-btn');
+      if (!bulkBtn) return;
+      const char = state.characters.find(c => c.id === charId);
+      if (!char) return;
+      const slots = char.noCapsule ? ['figure', 'cards'] : ['figure', 'capsule', 'cards'];
+      const readyCount = slots.filter(sKey => Boolean(pendingVerifyFileDrafts[getVerifyDraftKey(charId, sKey)])).length;
+      if (readyCount >= 2) {
+        bulkBtn.classList.remove('hidden');
+        bulkBtn.textContent = `🚀 Seçili ${readyCount} Fotoğrafı Tek Seferde Gönder`;
+      } else {
+        bulkBtn.classList.add('hidden');
+      }
+    }
 
     function resolveQueuePhotoSrc(req) {
       if (!req) return '';
@@ -3035,7 +3076,8 @@
       }
 
       const fileInput = document.getElementById(`verify-file-${slotKey}`);
-      const file = fileInput?.files?.[0];
+      const draftKey = getVerifyDraftKey(charId, slotKey);
+      const file = fileInput?.files?.[0] || pendingVerifyFileDrafts[draftKey];
       if (!file) {
         showToast('Lütfen doğrulama için bir fotoğraf seçin.');
         return;
@@ -3047,6 +3089,7 @@
           showToast('Bu dosya formatı tarayıcı tarafından okunamadı. Lütfen JPG, PNG veya WEBP fotoğraf seçin.');
           return;
         }
+        delete pendingVerifyFileDrafts[draftKey];
         const submittedTs = recordSlotDecision(userKey, charId, slotKey, 'pending', Date.now());
         const reqId = 'req-' + submittedTs + '-' + Math.random().toString(36).slice(2, 6);
         const slotPayload = { status: 'pending', photo: photoData, submittedAt: submittedTs };
@@ -3097,10 +3140,122 @@
         updateStats();
         renderCollection();
         openVerifyModal(charId);
-        showToast(`${char.name} (${slotLabel}) fotoğrafı kuyruğa eklendi; diğer parçalarınız korundu.`);
+        showToast(`${char.name} (${slotLabel}) gönderildi; seçtiğiniz diğer dosyalar korundu.`);
       }).finally(() => {
         isSubmittingVerification = false;
       });
+    }
+
+    async function submitAllSelectedVerifications(charId) {
+      if (isSubmittingVerification) return;
+      const char = state.characters.find(c => c.id === charId);
+      if (!char || !state.user || isOwner(state.user.username)) return;
+
+      const slots = [
+        { key: 'figure', label: 'Figür' },
+        ...(char.noCapsule ? [] : [{ key: 'capsule', label: 'Capsule' }]),
+        { key: 'cards', label: 'Cards' }
+      ];
+
+      const readySlots = slots
+        .map(s => {
+          const inputEl = document.getElementById(`verify-file-${s.key}`);
+          const draftKey = getVerifyDraftKey(charId, s.key);
+          const file = inputEl?.files?.[0] || pendingVerifyFileDrafts[draftKey] || null;
+          return { ...s, file, draftKey };
+        })
+        .filter(item => Boolean(item.file));
+
+      if (!readySlots.length) {
+        showToast('Gönderilecek seçili fotoğraf bulunamadı.');
+        return;
+      }
+
+      isSubmittingVerification = true;
+      try {
+        const userKey = String(state.user.username || '').trim().toLowerCase();
+        const processed = [];
+        for (const item of readySlots) {
+          const photoData = await compressImageFile(item.file, 720, 0.84);
+          if (photoData && isValidPhotoDataOrUrl(photoData)) {
+            processed.push({ ...item, photoData });
+          }
+        }
+
+        if (!processed.length) {
+          showToast('Seçilen fotoğraflar okunamadı. Lütfen JPG, PNG veya WEBP deneyin.');
+          return;
+        }
+
+        const latestColSnapshot = getActiveUserCollectionEntry(state.user.username, charId);
+        const nextCharSlots = { ...latestColSnapshot.mergedCharEntry };
+        let existingQueue = deduplicateQueueItems([
+          ...state.queue,
+          ...deduplicateQueueItems(loadJSON('mv3_queue', []))
+        ]);
+        const newQueueItems = [];
+        const patchTasks = [];
+
+        processed.forEach((item, idx) => {
+          delete pendingVerifyFileDrafts[item.draftKey];
+          const submittedTs = recordSlotDecision(userKey, charId, item.key, 'pending', Date.now() + idx);
+          const reqId = 'req-' + submittedTs + '-' + Math.random().toString(36).slice(2, 6);
+          const slotPayload = { status: 'pending', photo: item.photoData, submittedAt: submittedTs };
+          nextCharSlots[item.key] = slotPayload;
+
+          existingQueue = existingQueue.filter(
+            r => !(
+              r.username.toLowerCase() === userKey &&
+              r.charId === charId &&
+              String(r.slotKey || '').toLowerCase() === String(item.key).toLowerCase()
+            )
+          );
+
+          newQueueItems.push({
+            id: reqId,
+            username: state.user.username,
+            displayName: state.user.displayName,
+            charId,
+            charName: char.name,
+            slotKey: item.key,
+            slotLabel: item.label,
+            photo: item.photoData,
+            submittedAt: submittedTs
+          });
+
+          patchTasks.push({
+            slotKey: item.key,
+            slotPayload,
+            decObj: state.slotDecisions[makeSlotDecisionKey(userKey, charId, item.key)]
+          });
+        });
+
+        state.userCollections[userKey] = {
+          ...latestColSnapshot.baseUserCol,
+          [charId]: nextCharSlots
+        };
+        state.queue = deduplicateQueueItems([...newQueueItems, ...existingQueue]);
+
+        saveState(true, false, true);
+        for (const task of patchTasks) {
+          await patchRemoteSlotAndDecision(
+            userKey,
+            charId,
+            task.slotKey,
+            task.slotPayload,
+            task.decObj,
+            state.queue,
+            state.dismissedQueueIds || []
+          );
+        }
+
+        updateStats();
+        renderCollection();
+        openVerifyModal(charId);
+        showToast(`${char.name} için ${processed.length} fotoğraf birden yönetici onayına gönderildi!`);
+      } finally {
+        isSubmittingVerification = false;
+      }
     }
 
     function setLanguage(lang) {
@@ -3529,9 +3684,19 @@
         { key: 'cards', label: 'Cards' }
       ];
 
+      const adminOwner = isOwner(state.user.username);
+      const readyDraftCount = slots.filter(s => Boolean(pendingVerifyFileDrafts[getVerifyDraftKey(char.id, s.key)])).length;
+
+      const bulkSendHTML = !adminOwner ? `
+        <button id="verify-send-all-btn" type="button" onclick="submitAllSelectedVerifications('${char.id}')"
+          class="${readyDraftCount >= 2 ? '' : 'hidden '}w-full py-2.5 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-xs font-extrabold text-slate-950 shadow-lg transition">
+          🚀 Seçili ${readyDraftCount} Fotoğrafı Tek Seferde Gönder
+        </button>
+      ` : '';
+
       document.getElementById('verify-slots-container').innerHTML = slots.map(s => {
         const slotData = entry[s.key] || { status: 'none' };
-        const adminOwner = isOwner(state.user.username);
+        const draftFile = pendingVerifyFileDrafts[getVerifyDraftKey(char.id, s.key)] || null;
         const statusText = slotData.status === 'approved'
           ? '<span class="text-emerald-400 font-bold">Onaylı (✓)</span>'
           : slotData.status === 'pending'
@@ -3562,18 +3727,24 @@
                 ✓ Fotoğrafsız Direkt Onayla
               </button>
             ` : `
-              <div class="flex flex-col sm:flex-row gap-2">
-                <input id="verify-file-${s.key}" type="file" accept="image/*"
-                  class="flex-1 text-xs text-slate-400" />
-                <button type="button" onclick="submitSlotVerification('${char.id}', '${s.key}', '${s.label}')"
-                  class="px-3.5 py-2 rounded-xl bg-core-600 hover:bg-core-500 text-xs font-extrabold text-white transition">
-                  Fotoğraf Gönder
-                </button>
+              <div class="space-y-1.5">
+                <div class="flex flex-col sm:flex-row gap-2">
+                  <input id="verify-file-${s.key}" type="file" accept="image/*"
+                    onchange="handleVerifyFileDraftChange('${char.id}', '${s.key}', this)"
+                    class="flex-1 text-xs text-slate-400" />
+                  <button type="button" onclick="submitSlotVerification('${char.id}', '${s.key}', '${s.label}')"
+                    class="px-3.5 py-2 rounded-xl bg-core-600 hover:bg-core-500 text-xs font-extrabold text-white transition">
+                    Fotoğraf Gönder
+                  </button>
+                </div>
+                <div id="verify-draft-name-${s.key}" class="${draftFile ? '' : 'hidden '}text-[11px] font-semibold text-emerald-300">
+                  ${draftFile ? `Seçilen dosya hazır: ${escapeHTML(draftFile.name)}` : ''}
+                </div>
               </div>
             `}
           </div>
         `;
-      }).join('');
+      }).join('') + bulkSendHTML;
 
       openModal('verify-modal');
     }
