@@ -1881,51 +1881,76 @@
 
     function clearVerifyDraftPreview(draftKey) {
       if (pendingVerifyPreviewUrls[draftKey]) {
-        try {
-          URL.revokeObjectURL(pendingVerifyPreviewUrls[draftKey]);
-        } catch (e) {}
+        const prevVal = pendingVerifyPreviewUrls[draftKey];
+        if (typeof prevVal === 'string' && prevVal.startsWith('blob:')) {
+          try {
+            URL.revokeObjectURL(prevVal);
+          } catch (e) {}
+        }
         delete pendingVerifyPreviewUrls[draftKey];
       }
     }
 
-    function handleVerifyFileDraftChange(charId, slotKey, inputEl) {
+    function readRawFileAsDataUrl(file) {
+      return new Promise((resolve) => {
+        if (!file) return resolve('');
+        try {
+          const reader = new FileReader();
+          reader.onload = (ev) => {
+            const res = typeof ev.target?.result === 'string' ? ev.target.result : '';
+            resolve(res);
+          };
+          reader.onerror = () => resolve('');
+          reader.readAsDataURL(file);
+        } catch (e) {
+          resolve('');
+        }
+      });
+    }
+
+    async function handleVerifyFileDraftChange(charId, slotKey, inputEl) {
       const file = inputEl?.files?.[0] || null;
       const draftKey = getVerifyDraftKey(charId, slotKey);
       clearVerifyDraftPreview(draftKey);
-
-      if (file) {
-        pendingVerifyFileDrafts[draftKey] = file;
-        try {
-          pendingVerifyPreviewUrls[draftKey] = URL.createObjectURL(file);
-        } catch (e) {}
-      } else {
-        delete pendingVerifyFileDrafts[draftKey];
-      }
 
       const badgeEl = document.getElementById(`verify-draft-name-${slotKey}`);
       const previewWrapEl = document.getElementById(`verify-draft-preview-wrap-${slotKey}`);
       const previewImgEl = document.getElementById(`verify-draft-preview-img-${slotKey}`);
 
-      if (badgeEl) {
-        if (file) {
-          const sizeKb = Math.max(1, Math.round(file.size / 1024));
-          badgeEl.textContent = `Seçilen fotoğraf: ${file.name} (${sizeKb} KB)`;
-          badgeEl.classList.remove('hidden');
-        } else {
+      if (!file) {
+        delete pendingVerifyFileDrafts[draftKey];
+        if (badgeEl) {
           badgeEl.textContent = '';
           badgeEl.classList.add('hidden');
         }
-      }
-
-      if (previewWrapEl && previewImgEl) {
-        const previewUrl = pendingVerifyPreviewUrls[draftKey] || '';
-        if (file && previewUrl) {
-          previewImgEl.src = previewUrl;
-          previewWrapEl.classList.remove('hidden');
-        } else {
-          previewImgEl.src = '';
+        if (previewWrapEl && previewImgEl) {
+          previewImgEl.removeAttribute('src');
           previewWrapEl.classList.add('hidden');
         }
+        updateBulkVerifyButtonVisibility(charId);
+        return;
+      }
+
+      pendingVerifyFileDrafts[draftKey] = file;
+
+      if (badgeEl) {
+        const sizeKb = Math.max(1, Math.round(file.size / 1024));
+        badgeEl.textContent = `Seçilen fotoğraf: ${file.name} (${sizeKb} KB)`;
+        badgeEl.classList.remove('hidden');
+      }
+
+      const rawDataUrl = await readRawFileAsDataUrl(file);
+      if (pendingVerifyFileDrafts[draftKey] !== file) return;
+
+      if (rawDataUrl && rawDataUrl.startsWith('data:')) {
+        pendingVerifyPreviewUrls[draftKey] = rawDataUrl;
+        if (previewWrapEl && previewImgEl) {
+          previewImgEl.src = rawDataUrl;
+          previewWrapEl.classList.remove('hidden');
+        }
+      } else if (previewWrapEl && previewImgEl) {
+        previewImgEl.removeAttribute('src');
+        previewWrapEl.classList.add('hidden');
       }
 
       updateBulkVerifyButtonVisibility(charId);
@@ -2329,27 +2354,16 @@
 
     // Yüklenen her fotoğrafı (HEIC/WEBP/PNG/JPG dahil) güvenli bir JPEG data URL'e dönüştürür
     function compressImageFile(file, maxDim = 720, quality = 0.84) {
-      return new Promise((resolve) => {
+      return new Promise(async (resolve) => {
         if (!file) return resolve(null);
-        const readAsDataUrlFallback = () => new Promise((res) => {
-          try {
-            const r = new FileReader();
-            r.onload = (ev) => {
-              const out = typeof ev.target?.result === 'string' ? ev.target.result : null;
-              res(isValidPhotoDataOrUrl(out) ? out : null);
-            };
-            r.onerror = () => res(null);
-            r.readAsDataURL(file);
-          } catch (e) {
-            res(null);
-          }
-        });
+        const rawDataUrl = await readRawFileAsDataUrl(file);
 
         const renderImgToCanvasDataUrl = (img) => {
           try {
             const targetMaxDim = Math.max(Number(maxDim) || 720, 480);
             let w = img.naturalWidth || img.width || targetMaxDim;
             let h = img.naturalHeight || img.height || targetMaxDim;
+            if (!w || !h) return null;
             if (w > targetMaxDim || h > targetMaxDim) {
               if (w > h) {
                 h = Math.max(1, Math.round((h * targetMaxDim) / w));
@@ -2376,17 +2390,12 @@
           }
         };
 
-        const reader = new FileReader();
-        reader.onload = async (e) => {
-          const rawDataUrl = e.target?.result;
-          if (!rawDataUrl || typeof rawDataUrl !== 'string') {
-            return resolve(await readAsDataUrlFallback());
-          }
+        if (rawDataUrl && typeof rawDataUrl === 'string') {
           const img = new Image();
-          img.onload = async () => {
+          img.onload = () => {
             const compressed = renderImgToCanvasDataUrl(img);
             if (compressed) return resolve(compressed);
-            return resolve(isValidPhotoDataOrUrl(rawDataUrl) ? rawDataUrl : await readAsDataUrlFallback());
+            return resolve(rawDataUrl.startsWith('data:') ? rawDataUrl : null);
           };
           img.onerror = async () => {
             if (typeof createImageBitmap === 'function') {
@@ -2418,16 +2427,16 @@
                 }
               } catch (err) {}
             }
-            return resolve(isValidPhotoDataOrUrl(rawDataUrl) ? rawDataUrl : await readAsDataUrlFallback());
+            if (rawDataUrl.startsWith('data:')) {
+              return resolve(rawDataUrl);
+            }
+            return resolve(null);
           };
           img.src = rawDataUrl;
-        };
-        reader.onerror = async () => resolve(await readAsDataUrlFallback());
-        try {
-          reader.readAsDataURL(file);
-        } catch (err) {
-          readAsDataUrlFallback().then(resolve);
+          return;
         }
+
+        return resolve(null);
       });
     }
 
@@ -3116,17 +3125,28 @@
       }
 
       isSubmittingVerification = true;
-      compressImageFile(file, 720, 0.84).then(photoData => {
-        if (!photoData || !isValidPhotoDataOrUrl(photoData)) {
-          showToast('Bu dosya formatı tarayıcı tarafından okunamadı. Lütfen JPG, PNG veya WEBP fotoğraf seçin.');
+      compressImageFile(file, 720, 0.84).then(async photoData => {
+        let finalPhoto = isValidPhotoDataOrUrl(photoData) ? photoData : '';
+        if (!finalPhoto) {
+          const draftPreview = pendingVerifyPreviewUrls[draftKey];
+          if (draftPreview && typeof draftPreview === 'string' && draftPreview.startsWith('data:')) {
+            finalPhoto = draftPreview;
+          } else {
+            const rawFallback = await readRawFileAsDataUrl(file);
+            if (rawFallback && rawFallback.startsWith('data:')) {
+              finalPhoto = rawFallback;
+            }
+          }
+        }
+        if (!finalPhoto) {
+          showToast('Dosya okunamadı, lütfen farklı bir fotoğraf seçin.');
           return;
         }
-        const draftKey = getVerifyDraftKey(charId, slotKey);
         clearVerifyDraftPreview(draftKey);
         delete pendingVerifyFileDrafts[draftKey];
         const submittedTs = recordSlotDecision(userKey, charId, slotKey, 'pending', Date.now());
         const reqId = 'req-' + submittedTs + '-' + Math.random().toString(36).slice(2, 6);
-        const slotPayload = { status: 'pending', photo: photoData, submittedAt: submittedTs };
+        const slotPayload = { status: 'pending', photo: finalPhoto, submittedAt: submittedTs };
         const latestColSnapshot = getActiveUserCollectionEntry(state.user.username, charId);
         state.userCollections[userKey] = {
           ...latestColSnapshot.baseUserCol,
@@ -3155,7 +3175,7 @@
             charName: char.name,
             slotKey,
             slotLabel,
-            photo: photoData,
+            photo: finalPhoto,
             submittedAt: submittedTs
           },
           ...existingQueue
@@ -3210,14 +3230,20 @@
         const userKey = String(state.user.username || '').trim().toLowerCase();
         const processed = [];
         for (const item of readySlots) {
-          const photoData = await compressImageFile(item.file, 720, 0.84);
-          if (photoData && isValidPhotoDataOrUrl(photoData)) {
+          let photoData = await compressImageFile(item.file, 720, 0.84);
+          if (!isValidPhotoDataOrUrl(photoData)) {
+            const rawFallback = await readRawFileAsDataUrl(item.file);
+            if (rawFallback && rawFallback.startsWith('data:')) {
+              photoData = rawFallback;
+            }
+          }
+          if (photoData) {
             processed.push({ ...item, photoData });
           }
         }
 
         if (!processed.length) {
-          showToast('Seçilen fotoğraflar okunamadı. Lütfen JPG, PNG veya WEBP deneyin.');
+          showToast('Seçilen fotoğraflar okunamadı, lütfen farklı bir görsel deneyin.');
           return;
         }
 
@@ -3754,7 +3780,9 @@
               </div>
             ` : ''}
             <div id="verify-draft-preview-wrap-${s.key}" class="${draftFile && draftPreviewUrl ? '' : 'hidden '}w-full h-28 rounded-xl bg-slate-900 border border-emerald-500/40 flex items-center justify-center overflow-hidden relative">
-              <img id="verify-draft-preview-img-${s.key}" src="${draftFile && draftPreviewUrl ? escapeHTML(draftPreviewUrl) : ''}" alt="Seçilen Fotoğraf" class="w-full h-full object-contain p-1.5" />
+              <img id="verify-draft-preview-img-${s.key}" src="${draftFile && draftPreviewUrl ? escapeHTML(draftPreviewUrl) : ''}" alt=""
+                onerror="this.parentElement.classList.add('hidden');"
+                class="w-full h-full object-contain p-1.5" />
               <span class="pointer-events-none absolute top-1.5 left-2 px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[10px] font-extrabold">
                 SEÇİLEN FOTOĞRAF
               </span>
