@@ -1873,29 +1873,61 @@
     let activeVerifyModalCharId = null;
     let isLightboxZoomed = false;
     const pendingVerifyFileDrafts = {};
+    const pendingVerifyPreviewUrls = {};
 
     function getVerifyDraftKey(charId, slotKey) {
       return `${String(charId || '').trim()}::${String(slotKey || '').trim().toLowerCase()}`;
     }
 
+    function clearVerifyDraftPreview(draftKey) {
+      if (pendingVerifyPreviewUrls[draftKey]) {
+        try {
+          URL.revokeObjectURL(pendingVerifyPreviewUrls[draftKey]);
+        } catch (e) {}
+        delete pendingVerifyPreviewUrls[draftKey];
+      }
+    }
+
     function handleVerifyFileDraftChange(charId, slotKey, inputEl) {
       const file = inputEl?.files?.[0] || null;
       const draftKey = getVerifyDraftKey(charId, slotKey);
+      clearVerifyDraftPreview(draftKey);
+
       if (file) {
         pendingVerifyFileDrafts[draftKey] = file;
+        try {
+          pendingVerifyPreviewUrls[draftKey] = URL.createObjectURL(file);
+        } catch (e) {}
       } else {
         delete pendingVerifyFileDrafts[draftKey];
       }
+
       const badgeEl = document.getElementById(`verify-draft-name-${slotKey}`);
+      const previewWrapEl = document.getElementById(`verify-draft-preview-wrap-${slotKey}`);
+      const previewImgEl = document.getElementById(`verify-draft-preview-img-${slotKey}`);
+
       if (badgeEl) {
         if (file) {
-          badgeEl.textContent = `Seçilen dosya hazır: ${file.name}`;
+          const sizeKb = Math.max(1, Math.round(file.size / 1024));
+          badgeEl.textContent = `Seçilen fotoğraf: ${file.name} (${sizeKb} KB)`;
           badgeEl.classList.remove('hidden');
         } else {
           badgeEl.textContent = '';
           badgeEl.classList.add('hidden');
         }
       }
+
+      if (previewWrapEl && previewImgEl) {
+        const previewUrl = pendingVerifyPreviewUrls[draftKey] || '';
+        if (file && previewUrl) {
+          previewImgEl.src = previewUrl;
+          previewWrapEl.classList.remove('hidden');
+        } else {
+          previewImgEl.src = '';
+          previewWrapEl.classList.add('hidden');
+        }
+      }
+
       updateBulkVerifyButtonVisibility(charId);
     }
 
@@ -3089,6 +3121,8 @@
           showToast('Bu dosya formatı tarayıcı tarafından okunamadı. Lütfen JPG, PNG veya WEBP fotoğraf seçin.');
           return;
         }
+        const draftKey = getVerifyDraftKey(charId, slotKey);
+        clearVerifyDraftPreview(draftKey);
         delete pendingVerifyFileDrafts[draftKey];
         const submittedTs = recordSlotDecision(userKey, charId, slotKey, 'pending', Date.now());
         const reqId = 'req-' + submittedTs + '-' + Math.random().toString(36).slice(2, 6);
@@ -3197,6 +3231,7 @@
         const patchTasks = [];
 
         processed.forEach((item, idx) => {
+          clearVerifyDraftPreview(item.draftKey);
           delete pendingVerifyFileDrafts[item.draftKey];
           const submittedTs = recordSlotDecision(userKey, charId, item.key, 'pending', Date.now() + idx);
           const reqId = 'req-' + submittedTs + '-' + Math.random().toString(36).slice(2, 6);
@@ -3696,7 +3731,9 @@
 
       document.getElementById('verify-slots-container').innerHTML = slots.map(s => {
         const slotData = entry[s.key] || { status: 'none' };
-        const draftFile = pendingVerifyFileDrafts[getVerifyDraftKey(char.id, s.key)] || null;
+        const draftKey = getVerifyDraftKey(char.id, s.key);
+        const draftFile = pendingVerifyFileDrafts[draftKey] || null;
+        const draftPreviewUrl = pendingVerifyPreviewUrls[draftKey] || '';
         const statusText = slotData.status === 'approved'
           ? '<span class="text-emerald-400 font-bold">Onaylı (✓)</span>'
           : slotData.status === 'pending'
@@ -3716,6 +3753,12 @@
                 <img src="${escapeHTML(slotData.photo)}" alt="${escapeHTML(s.label)}" class="w-full h-full object-contain p-1.5" />
               </div>
             ` : ''}
+            <div id="verify-draft-preview-wrap-${s.key}" class="${draftFile && draftPreviewUrl ? '' : 'hidden '}w-full h-28 rounded-xl bg-slate-900 border border-emerald-500/40 flex items-center justify-center overflow-hidden relative">
+              <img id="verify-draft-preview-img-${s.key}" src="${draftFile && draftPreviewUrl ? escapeHTML(draftPreviewUrl) : ''}" alt="Seçilen Fotoğraf" class="w-full h-full object-contain p-1.5" />
+              <span class="pointer-events-none absolute top-1.5 left-2 px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[10px] font-extrabold">
+                SEÇİLEN FOTOĞRAF
+              </span>
+            </div>
             ${slotData.status === 'approved' ? `
               <button type="button" onclick="removeOwnSlotTick('${char.id}', '${s.key}')"
                 class="w-full py-2 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/30 text-xs font-bold transition">
@@ -3738,7 +3781,7 @@
                   </button>
                 </div>
                 <div id="verify-draft-name-${s.key}" class="${draftFile ? '' : 'hidden '}text-[11px] font-semibold text-emerald-300">
-                  ${draftFile ? `Seçilen dosya hazır: ${escapeHTML(draftFile.name)}` : ''}
+                  ${draftFile ? `Seçilen fotoğraf: ${escapeHTML(draftFile.name)} (${Math.max(1, Math.round(draftFile.size / 1024))} KB)` : ''}
                 </div>
               </div>
             `}
