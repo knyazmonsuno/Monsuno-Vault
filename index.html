@@ -1872,6 +1872,10 @@
 
     let activeVerifyModalCharId = null;
     let isLightboxZoomed = false;
+    let lastLocalMutationAt = Number(localStorage.getItem(STORAGE_KEY_MUTATION_TS) || 0);
+    let lastQueueMutationAt = Number(localStorage.getItem(STORAGE_KEY_QUEUE_TS) || 0);
+    let isLiveSyncConnected = false;
+    let remotePushTimer = null;
     const pendingVerifyFileDrafts = {};
     const pendingVerifyPreviewUrls = {};
 
@@ -2025,6 +2029,381 @@
       applyLightboxZoomState();
     }
 
+    function showToast(message) {
+      const box = document.getElementById('toast-box');
+      if (!box) return;
+      box.textContent = message;
+      box.classList.remove('hidden');
+      clearTimeout(showToast._timer);
+      showToast._timer = setTimeout(() => {
+        box.classList.add('hidden');
+      }, 3200);
+    }
+
+    function openModal(modalId) {
+      document.getElementById(modalId)?.classList.remove('hidden');
+    }
+
+    function closeModal(modalId) {
+      document.getElementById(modalId)?.classList.add('hidden');
+      if (modalId === 'verify-modal') {
+        activeVerifyModalCharId = null;
+      }
+    }
+
+    function openPhotoLightbox(reqId) {
+      const req = (state.queue || []).find(item => String(item.id) === String(reqId));
+      const src = req ? resolveQueuePhotoSrc(req) : '';
+      if (!src) {
+        showToast('Büyütülecek fotoğraf bulunamadı.');
+        return;
+      }
+      isLightboxZoomed = false;
+      const modal = document.getElementById('photo-lightbox-modal');
+      const img = document.getElementById('lightbox-image');
+      const titleEl = document.getElementById('lightbox-title');
+      const subEl = document.getElementById('lightbox-subtitle');
+      if (titleEl) titleEl.textContent = `${req.charName || 'MONSUNO'} — ${req.slotLabel || 'DOĞRULAMA'}`;
+      if (subEl) subEl.textContent = `${req.displayName || ''} (@${req.username || ''})`;
+      if (img) {
+        img.src = src;
+        applyLightboxZoomState();
+      }
+      modal?.classList.remove('hidden');
+    }
+
+    function closePhotoLightbox() {
+      isLightboxZoomed = false;
+      applyLightboxZoomState();
+      document.getElementById('photo-lightbox-modal')?.classList.add('hidden');
+    }
+
+    function getNormalizedDatabaseURL() {
+      const raw = String(state.liveDbUrl || DEFAULT_LIVE_DB_URL || '').trim().replace(/\/+$/, '');
+      if (!raw || !/^https?:\/\//i.test(raw)) return '';
+      return raw;
+    }
+
+    function updateLiveSyncButton(connected = isLiveSyncConnected) {
+      isLiveSyncConnected = Boolean(connected);
+      const btn = document.getElementById('live-sync-status-btn');
+      if (!btn) return;
+      if (isLiveSyncConnected) {
+        btn.textContent = '🟢 Canlı Senkron';
+        btn.className = 'px-2.5 py-2 rounded-xl text-xs font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/40';
+      } else {
+        btn.textContent = '🌐 Yerel Mod';
+        btn.className = 'px-2.5 py-2 rounded-xl text-xs font-bold bg-slate-900 text-slate-300 border border-slate-700';
+      }
+    }
+
+    function compressImageFile(file, maxSize = 720, quality = 0.84) {
+      return new Promise((resolve) => {
+        if (!file) return resolve('');
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          const dataUrl = typeof ev.target?.result === 'string' ? ev.target.result : '';
+          if (!dataUrl || !dataUrl.startsWith('data:image/')) {
+            return resolve('');
+          }
+          const img = new Image();
+          img.onload = () => {
+            try {
+              const canvas = document.createElement('canvas');
+              let { width, height } = img;
+              if (width > maxSize || height > maxSize) {
+                if (width > height) {
+                  height = Math.round((height * maxSize) / width);
+                  width = maxSize;
+                } else {
+                  width = Math.round((width * maxSize) / height);
+                  height = maxSize;
+                }
+              }
+              canvas.width = Math.max(1, width);
+              canvas.height = Math.max(1, height);
+              const ctx = canvas.getContext('2d');
+              if (!ctx) return resolve(dataUrl);
+              ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+              const compressed = canvas.toDataURL('image/jpeg', quality);
+              resolve(compressed || dataUrl);
+            } catch (e) {
+              resolve(dataUrl);
+            }
+          };
+          img.onerror = () => resolve(dataUrl);
+          img.src = dataUrl;
+        };
+        reader.onerror = () => resolve('');
+        reader.readAsDataURL(file);
+      });
+    }
+
+    function persistCharactersNow(nextList) {
+      state.characters = normalizeCharactersArray(nextList);
+      syncCharImagesMap(state.characters);
+      try {
+        localStorage.setItem(STORAGE_KEY_CHARACTERS, JSON.stringify(state.characters));
+        if (isOwner(state.user?.username)) {
+          localStorage.setItem(STORAGE_KEY_OWNER_CHAR_SNAPSHOT, JSON.stringify(state.characters));
+        }
+      } catch (e) {}
+    }
+
+    function removeResolvedFromQueue(reqId, reqObj = null) {
+      const idsToAdd = [];
+      if (reqId) idsToAdd.push(String(reqId));
+      if (reqObj?.id) idsToAdd.push(String(reqObj.id));
+      if (idsToAdd.length) {
+        state.dismissedQueueIds = Array.from(new Set([
+          ...(state.dismissedQueueIds || []).map(String),
+          ...idsToAdd
+        ])).slice(-500);
+      }
+      state.queue = deduplicateQueueItems(state.queue || [], state.dismissedQueueIds, state.slotDecisions).filter(item => {
+        if (!item) return false;
+        if (reqId && String(item.id) === String(reqId)) return false;
+        if (
+          reqObj &&
+          String(item.username || '').trim().toLowerCase() === String(reqObj.username || '').trim().toLowerCase() &&
+          String(item.charId || '').trim() === String(reqObj.charId || '').trim() &&
+          String(item.slotKey || '').trim().toLowerCase() === String(reqObj.slotKey || '').trim().toLowerCase()
+        ) {
+          return false;
+        }
+        return true;
+      });
+    }
+
+    function buildSnapshotPayload(ts = Date.now(), queueTs = lastQueueMutationAt) {
+      return {
+        ts,
+        queueTs,
+        users: state.users,
+        characters: state.characters,
+        userCollections: state.userCollections,
+        slotDecisions: state.slotDecisions,
+        dismissedQueueIds: state.dismissedQueueIds || [],
+        queue: state.queue,
+        chat: state.chat.slice(-200),
+        photoChat: state.photoChat.slice(0, 100),
+        market: state.market.slice(0, 150),
+        tickets: state.tickets.slice(0, 200),
+        reports: state.reports.slice(0, 200)
+      };
+    }
+
+    function saveState(isMutation = true, queueMutation = false, immediateRemote = false) {
+      try {
+        localStorage.setItem('mv3_lang', state.lang);
+        localStorage.setItem('mv3_active_section', JSON.stringify(state.activeSection));
+        localStorage.setItem('mv3_faction_filter', JSON.stringify(state.activeFactionFilter));
+        localStorage.setItem('mv3_ticked_filter', JSON.stringify(state.activeTickedFilter));
+        localStorage.setItem('mv3_market_filter', JSON.stringify(state.activeMarketFilter));
+
+        if (state.user) {
+          localStorage.setItem('mv3_current_user', JSON.stringify(state.user));
+        } else {
+          localStorage.removeItem('mv3_current_user');
+        }
+
+        localStorage.setItem('mv3_users', JSON.stringify(state.users));
+        syncCharImagesMap(state.characters);
+        localStorage.setItem(STORAGE_KEY_CHARACTERS, JSON.stringify(state.characters));
+        localStorage.setItem('mv3_user_collections', JSON.stringify(state.userCollections));
+        localStorage.setItem(STORAGE_KEY_DECISIONS, JSON.stringify(state.slotDecisions));
+        localStorage.setItem('mv3_dismissed_queue_ids', JSON.stringify(state.dismissedQueueIds || []));
+        localStorage.setItem('mv3_queue', JSON.stringify(state.queue));
+        localStorage.setItem('mv3_chat', JSON.stringify(state.chat.slice(-200)));
+        localStorage.setItem('mv3_photo_chat', JSON.stringify(state.photoChat.slice(0, 100)));
+        localStorage.setItem('mv3_market', JSON.stringify(state.market.slice(0, 150)));
+        localStorage.setItem('mv3_tickets', JSON.stringify(state.tickets.slice(0, 200)));
+        localStorage.setItem('mv3_reports', JSON.stringify(state.reports.slice(0, 200)));
+
+        if (isMutation) {
+          lastLocalMutationAt = Date.now();
+          localStorage.setItem(STORAGE_KEY_MUTATION_TS, String(lastLocalMutationAt));
+        }
+        if (queueMutation || isMutation) {
+          lastQueueMutationAt = Date.now();
+          localStorage.setItem(STORAGE_KEY_QUEUE_TS, String(lastQueueMutationAt));
+        }
+
+        const snapshot = buildSnapshotPayload(lastLocalMutationAt, lastQueueMutationAt);
+        if (instantChannel && isMutation) {
+          try {
+            instantChannel.postMessage(snapshot);
+          } catch (e) {}
+        }
+
+        if (isMutation && getNormalizedDatabaseURL()) {
+          if (immediateRemote) {
+            flushRemotePushNow();
+          } else {
+            clearTimeout(remotePushTimer);
+            remotePushTimer = setTimeout(() => {
+              flushRemotePushNow();
+            }, 250);
+          }
+        }
+      } catch (e) {}
+    }
+
+    async function patchRemoteSlotAndDecision(userKey, charId, slotKey, slotPayload, decObj, nextQueue, dismissedIds) {
+      const dbUrl = getNormalizedDatabaseURL();
+      if (!dbUrl) return;
+      try {
+        const safeUser = encodeURIComponent(String(userKey || '').trim().toLowerCase());
+        const safeChar = encodeURIComponent(String(charId || '').trim());
+        const safeSlot = encodeURIComponent(String(slotKey || '').trim().toLowerCase());
+        await fetch(`${dbUrl}/mv3_vault/userCollections/${safeUser}/${safeChar}/${safeSlot}.json`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(slotPayload || null)
+        });
+        if (decObj) {
+          const decKey = encodeURIComponent(makeSlotDecisionKey(userKey, charId, slotKey));
+          await fetch(`${dbUrl}/mv3_vault/slotDecisions/${decKey}.json`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(decObj)
+          });
+        }
+        await fetch(`${dbUrl}/mv3_vault/queue.json`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(Array.isArray(nextQueue) ? nextQueue : [])
+        });
+        await fetch(`${dbUrl}/mv3_vault/dismissedQueueIds.json`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(Array.isArray(dismissedIds) ? dismissedIds : [])
+        });
+      } catch (e) {}
+    }
+
+    async function flushRemotePushNow() {
+      clearTimeout(remotePushTimer);
+      const dbUrl = getNormalizedDatabaseURL();
+      if (!dbUrl) return;
+      try {
+        const payload = buildSnapshotPayload(lastLocalMutationAt || Date.now(), lastQueueMutationAt || Date.now());
+        const res = await fetch(`${dbUrl}/mv3_vault.json`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        updateLiveSyncButton(res.ok);
+      } catch (e) {
+        updateLiveSyncButton(false);
+      }
+    }
+
+    async function pullRemoteSharedState(showStatus = false, isInitialBoot = false) {
+      const dbUrl = getNormalizedDatabaseURL();
+      if (!dbUrl) {
+        updateLiveSyncButton(false);
+        return;
+      }
+      try {
+        const res = await fetch(`${dbUrl}/mv3_vault.json`, { cache: 'no-store' });
+        if (!res.ok) {
+          updateLiveSyncButton(false);
+          return;
+        }
+        updateLiveSyncButton(true);
+        const remote = await res.json();
+        if (!remote || typeof remote !== 'object') {
+          if (isInitialBoot && state.user) {
+            flushRemotePushNow();
+          }
+          return;
+        }
+        const remoteTs = Number(remote.ts || 0);
+        if (remoteTs >= lastLocalMutationAt || isInitialBoot) {
+          applyIncomingInstantSnapshot(remote);
+        }
+        if (showStatus) {
+          showToast('Canlı veriler güncellendi.');
+        }
+      } catch (e) {
+        updateLiveSyncButton(false);
+      }
+    }
+
+    async function triggerTranslate(scope, itemId) {
+      const lang = TRANSLATIONS[state.lang] ? state.lang : 'tr';
+      let sourceText = '';
+      let cacheKey = '';
+
+      if (scope === 'chat') {
+        const msg = state.chat.find(m => String(m.id) === String(itemId));
+        if (!msg) return;
+        sourceText = msg.text;
+        cacheKey = `${lang}::chat-${msg.id}`;
+      } else if (scope === 'photo-chat') {
+        const item = state.photoChat.find(p => String(p.id) === String(itemId));
+        if (!item) return;
+        sourceText = item.caption;
+        cacheKey = `${lang}::pchat-${item.id}`;
+      } else if (scope === 'market') {
+        const item = state.market.find(l => String(l.id) === String(itemId));
+        if (!item) return;
+        sourceText = [item.title, item.desc].filter(Boolean).join(' — ');
+        cacheKey = `${lang}::lst-${item.id}`;
+      }
+
+      if (!sourceText || !cacheKey) return;
+
+      if (state.translationsCache[cacheKey] && !state.translationsCache[cacheKey].loading) {
+        delete state.translationsCache[cacheKey];
+        if (scope === 'chat') renderChat();
+        if (scope === 'photo-chat') renderPhotoChat();
+        if (scope === 'market') renderMarket();
+        return;
+      }
+
+      state.translationsCache[cacheKey] = { loading: true, text: '' };
+      if (scope === 'chat') renderChat();
+      if (scope === 'photo-chat') renderPhotoChat();
+      if (scope === 'market') renderMarket();
+
+      try {
+        const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${encodeURIComponent(lang)}&dt=t&q=${encodeURIComponent(sourceText)}`;
+        const resp = await fetch(url);
+        const data = await resp.json();
+        const translatedText = Array.isArray(data?.[0])
+          ? data[0].map(seg => seg?.[0] || '').join('').trim()
+          : '';
+        state.translationsCache[cacheKey] = {
+          loading: false,
+          text: translatedText || sourceText
+        };
+      } catch (e) {
+        state.translationsCache[cacheKey] = {
+          loading: false,
+          text: sourceText
+        };
+      }
+
+      if (scope === 'chat') renderChat();
+      if (scope === 'photo-chat') renderPhotoChat();
+      if (scope === 'market') renderMarket();
+    }
+
+    function triggerReport(scope, itemId) {
+      if (scope === 'chat') {
+        const msg = state.chat.find(m => String(m.id) === String(itemId));
+        reportContent('chat', itemId, `${msg?.displayName || itemId}: ${msg?.text || ''}`);
+      } else if (scope === 'photo-chat') {
+        const item = state.photoChat.find(p => String(p.id) === String(itemId));
+        reportContent('photo-chat', itemId, `${item?.displayName || itemId}: ${item?.caption || 'Fotoğraf'}`);
+      } else if (scope === 'market') {
+        const item = state.market.find(l => String(l.id) === String(itemId));
+        reportContent('market', itemId, `${item?.ownerDisplayName || itemId}: ${item?.title || 'İlan'}`);
+      }
+    }
+
     function applyIncomingInstantSnapshot(snapshot) {
       if (!snapshot || typeof snapshot !== 'object') return;
       const incomingTs = typeof snapshot.ts === 'number' ? snapshot.ts : 0;
@@ -2175,844 +2554,67 @@
       if (state.activeSection === 'admin' && isOwner(state.user.username)) renderAdmin();
       const verifyModal = document.getElementById('verify-modal');
       if (activeVerifyModalCharId && verifyModal && !verifyModal.classList.contains('hidden')) {
-        openVerifyModal(activeVerifyModalCharId);
-      }
-    }
-
-    function broadcastInstantUpdate() {
-      const snapshot = {
-        ts: lastLocalMutationAt || Date.now(),
-        queueTs: lastQueueMutationAt || lastLocalMutationAt || Date.now(),
-        dismissedQueueIds: Array.isArray(state.dismissedQueueIds) ? state.dismissedQueueIds : [],
-        slotDecisions: state.slotDecisions || {},
-        users: state.users,
-        characters: normalizeCharactersArray(state.characters),
-        userCollections: state.userCollections,
-        queue: deduplicateQueueItems(state.queue, state.dismissedQueueIds, state.slotDecisions),
-        chat: state.chat,
-        photoChat: state.photoChat,
-        market: state.market,
-        tickets: state.tickets,
-        reports: state.reports
-      };
-      if (instantChannel) {
-        try {
-          instantChannel.postMessage(snapshot);
-        } catch (e) {}
-      }
-    }
-
-    function markQueueItemDismissed(req) {
-      if (!req) return;
-      if (!Array.isArray(state.dismissedQueueIds)) {
-        state.dismissedQueueIds = [];
-      }
-      if (req.id && !state.dismissedQueueIds.includes(String(req.id))) {
-        state.dismissedQueueIds.push(String(req.id));
-        if (state.dismissedQueueIds.length > 500) {
-          state.dismissedQueueIds = state.dismissedQueueIds.slice(-500);
+        const hasAnyDraftOpen = Object.keys(pendingVerifyFileDrafts).some(k =>
+          k.startsWith(`${activeVerifyModalCharId}::`)
+        );
+        if (!hasAnyDraftOpen && !isSubmittingVerification) {
+          openVerifyModal(activeVerifyModalCharId);
         }
       }
-      try {
-        localStorage.setItem('mv3_dismissed_queue_ids', JSON.stringify(state.dismissedQueueIds));
-      } catch (e) {}
     }
+    async function handleVerifyFileDraftChange(charId, slotKey, inputEl) {
+      const file = inputEl?.files?.[0] || null;
+      const draftKey = getVerifyDraftKey(charId, slotKey);
+      clearVerifyDraftPreview(draftKey);
 
-    function removeResolvedFromQueue(reqId, reqObj) {
-      markQueueItemDismissed(reqObj);
-      const targetUserKey = String(reqObj?.username || '').trim().toLowerCase();
-      const targetCharId = String(reqObj?.charId || '').trim();
-      const targetSlotKey = String(reqObj?.slotKey || '').trim().toLowerCase();
+      const badgeEl = document.getElementById(`verify-draft-name-${slotKey}`);
+      const previewWrapEl = document.getElementById(`verify-draft-preview-wrap-${slotKey}`);
+      const previewImgEl = document.getElementById(`verify-draft-preview-img-${slotKey}`);
+      const previewTagEl = document.getElementById(`verify-draft-tag-${slotKey}`);
 
-      state.queue = deduplicateQueueItems(state.queue, state.dismissedQueueIds, state.slotDecisions).filter(item => {
-        if (!item) return false;
-        if (reqId && String(item.id) === String(reqId)) return false;
-        if (
-          targetUserKey &&
-          targetCharId &&
-          targetSlotKey &&
-          String(item.username || '').trim().toLowerCase() === targetUserKey &&
-          String(item.charId || '').trim() === targetCharId &&
-          String(item.slotKey || '').trim().toLowerCase() === targetSlotKey
-        ) {
-          return false;
+      if (!file) {
+        delete pendingVerifyFileDrafts[draftKey];
+        if (badgeEl) {
+          badgeEl.textContent = '';
+          badgeEl.classList.add('hidden');
         }
-        return true;
-      });
-    }
-
-    let toastTimer = null;
-    function showToast(message) {
-      const box = document.getElementById('toast-box');
-      if (!box) return;
-      box.textContent = String(message || '');
-      box.classList.remove('hidden');
-      clearTimeout(toastTimer);
-      toastTimer = setTimeout(() => {
-        box.classList.add('hidden');
-      }, 3000);
-    }
-
-    function openModal(modalId) {
-      document.getElementById(modalId)?.classList.remove('hidden');
-    }
-
-    function closeModal(modalId) {
-      if (modalId === 'verify-modal') {
-        activeVerifyModalCharId = null;
-      }
-      document.getElementById(modalId)?.classList.add('hidden');
-    }
-
-    function openPhotoLightbox(reqId) {
-      const req = state.queue.find(r => String(r.id) === String(reqId));
-      const photoSrc = resolveQueuePhotoSrc(req);
-      if (!req || !photoSrc) {
-        showToast('Bu kayıtta görüntülenecek geçerli bir fotoğraf bulunamadı.');
+        if (previewWrapEl && previewImgEl) {
+          previewImgEl.removeAttribute('src');
+          previewWrapEl.classList.add('hidden');
+        }
+        if (previewTagEl) previewTagEl.classList.add('hidden');
+        updateBulkVerifyButtonVisibility(charId);
         return;
       }
-      const modal = document.getElementById('photo-lightbox-modal');
-      const img = document.getElementById('lightbox-image');
-      const title = document.getElementById('lightbox-title');
-      const subtitle = document.getElementById('lightbox-subtitle');
-      if (!modal || !img) return;
-      isLightboxZoomed = false;
-      applyLightboxZoomState();
-      img.src = photoSrc;
-      if (title) title.textContent = `${req.charName || 'MONSUNO'} — ${req.slotLabel || 'DOĞRULAMA'}`;
-      if (subtitle) subtitle.textContent = `${req.displayName || ''} (@${req.username || ''})`;
-      modal.classList.remove('hidden');
-    }
 
-    function closePhotoLightbox() {
-      const modal = document.getElementById('photo-lightbox-modal');
-      const img = document.getElementById('lightbox-image');
-      isLightboxZoomed = false;
-      applyLightboxZoomState();
-      if (img) img.src = '';
-      modal?.classList.add('hidden');
-    }
+      pendingVerifyFileDrafts[draftKey] = file;
 
-    function getNormalizedDatabaseURL() {
-      const raw = (state.liveDbUrl || '').trim().replace(/\/+$/, '');
-      if (!raw) return '';
-      if (!/^https:\/\/[a-zA-Z0-9.-]+/.test(raw)) return '';
-      return raw;
-    }
-
-    function updateLiveSyncButton(connected = Boolean(getNormalizedDatabaseURL())) {
-      const btn = document.getElementById('live-sync-status-btn');
-      if (!btn) return;
-      if (connected) {
-        btn.textContent = '🟢 Otomatik Kayıt Aktif';
-        btn.className = 'px-2.5 py-2 rounded-xl text-xs font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/40';
-      } else {
-        btn.textContent = '🌐 Yerel Otomatik Kayıt';
-        btn.className = 'px-2.5 py-2 rounded-xl text-xs font-bold bg-slate-900 text-slate-300 border border-slate-700';
-      }
-    }
-
-    function buildSharedPayload() {
-      const normalizedChars = normalizeCharactersArray(state.characters);
-      state.characters = normalizedChars;
-      state.queue = deduplicateQueueItems(state.queue, state.dismissedQueueIds, state.slotDecisions);
-      const effectiveUpdatedAt = Math.max(lastLocalMutationAt || 0, lastQueueMutationAt || 0, Date.now());
-      return {
-        updatedAt: effectiveUpdatedAt,
-        queueUpdatedAt: lastQueueMutationAt || effectiveUpdatedAt,
-        dismissedQueueIds: Array.isArray(state.dismissedQueueIds) ? state.dismissedQueueIds : [],
-        slotDecisions: state.slotDecisions || {},
-        users: state.users,
-        characters: normalizedChars,
-        userCollections: state.userCollections,
-        queue: state.queue,
-        chat: state.chat,
-        photoChat: state.photoChat,
-        market: state.market,
-        tickets: state.tickets,
-        reports: state.reports
-      };
-    }
-
-    let pushDebounceTimer = null;
-    let lastLocalMutationAt = Number(loadJSON(STORAGE_KEY_MUTATION_TS, 0)) || 0;
-    let lastQueueMutationAt = Number(loadJSON(STORAGE_KEY_QUEUE_TS, 0)) || 0;
-
-    function markLocalMutation(queueChanged = false) {
-      const nowTs = Date.now();
-      lastLocalMutationAt = Math.max(lastLocalMutationAt + 1, nowTs);
-      if (queueChanged) {
-        lastQueueMutationAt = Math.max(lastQueueMutationAt + 1, lastLocalMutationAt);
-      }
-      try {
-        localStorage.setItem(STORAGE_KEY_MUTATION_TS, String(lastLocalMutationAt));
-        if (queueChanged) {
-          localStorage.setItem(STORAGE_KEY_QUEUE_TS, String(lastQueueMutationAt));
-        }
-      } catch (e) {}
-    }
-
-    // Yüklenen her fotoğrafı (HEIC/WEBP/PNG/JPG dahil) güvenli bir JPEG data URL'e dönüştürür
-    function compressImageFile(file, maxDim = 720, quality = 0.84) {
-      return new Promise(async (resolve) => {
-        if (!file) return resolve(null);
-        const rawDataUrl = await readRawFileAsDataUrl(file);
-
-        const renderImgToCanvasDataUrl = (img) => {
-          try {
-            const targetMaxDim = Math.max(Number(maxDim) || 720, 480);
-            let w = img.naturalWidth || img.width || targetMaxDim;
-            let h = img.naturalHeight || img.height || targetMaxDim;
-            if (!w || !h) return null;
-            if (w > targetMaxDim || h > targetMaxDim) {
-              if (w > h) {
-                h = Math.max(1, Math.round((h * targetMaxDim) / w));
-                w = targetMaxDim;
-              } else {
-                w = Math.max(1, Math.round((w * targetMaxDim) / h));
-                h = targetMaxDim;
-              }
-            }
-            const canvas = document.createElement('canvas');
-            canvas.width = w;
-            canvas.height = h;
-            const ctx = canvas.getContext('2d');
-            if (!ctx) return null;
-            ctx.fillStyle = '#0f172a';
-            ctx.fillRect(0, 0, w, h);
-            ctx.imageSmoothingEnabled = true;
-            ctx.imageSmoothingQuality = 'high';
-            ctx.drawImage(img, 0, 0, w, h);
-            const jpegData = canvas.toDataURL('image/jpeg', Math.min(Math.max(Number(quality) || 0.84, 0.72), 0.92));
-            return isValidPhotoDataOrUrl(jpegData) ? jpegData : null;
-          } catch (e) {
-            return null;
-          }
-        };
-
-        if (rawDataUrl && typeof rawDataUrl === 'string') {
-          const img = new Image();
-          img.onload = () => {
-            const compressed = renderImgToCanvasDataUrl(img);
-            if (compressed) return resolve(compressed);
-            return resolve(rawDataUrl.startsWith('data:') ? rawDataUrl : null);
-          };
-          img.onerror = async () => {
-            if (typeof createImageBitmap === 'function') {
-              try {
-                const bitmap = await createImageBitmap(file);
-                const canvas = document.createElement('canvas');
-                const targetMaxDim = Math.max(Number(maxDim) || 720, 480);
-                let w = bitmap.width || targetMaxDim;
-                let h = bitmap.height || targetMaxDim;
-                if (w > targetMaxDim || h > targetMaxDim) {
-                  if (w > h) {
-                    h = Math.max(1, Math.round((h * targetMaxDim) / w));
-                    w = targetMaxDim;
-                  } else {
-                    w = Math.max(1, Math.round((w * targetMaxDim) / h));
-                    h = targetMaxDim;
-                  }
-                }
-                canvas.width = w;
-                canvas.height = h;
-                const ctx = canvas.getContext('2d');
-                if (ctx) {
-                  ctx.fillStyle = '#0f172a';
-                  ctx.fillRect(0, 0, w, h);
-                  ctx.drawImage(bitmap, 0, 0, w, h);
-                  const bmpUrl = canvas.toDataURL('image/jpeg', 0.84);
-                  if (typeof bitmap.close === 'function') bitmap.close();
-                  if (isValidPhotoDataOrUrl(bmpUrl)) return resolve(bmpUrl);
-                }
-              } catch (err) {}
-            }
-            if (rawDataUrl.startsWith('data:')) {
-              return resolve(rawDataUrl);
-            }
-            return resolve(null);
-          };
-          img.src = rawDataUrl;
-          return;
-        }
-
-        return resolve(null);
-      });
-    }
-
-    async function pushCharactersDedicated() {
-      const dbUrl = getNormalizedDatabaseURL();
-      if (!dbUrl) return;
-      try {
-        await fetch(`${dbUrl}/monsunoVaultCharacters.json`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            updatedAt: lastLocalMutationAt || Date.now(),
-            items: normalizeCharactersArray(state.characters)
-          })
-        });
-      } catch (e) {}
-    }
-
-    async function pullCharactersDedicated() {
-      const dbUrl = getNormalizedDatabaseURL();
-      if (!dbUrl) return false;
-      try {
-        const res = await fetch(`${dbUrl}/monsunoVaultCharacters.json`, { cache: 'no-store' });
-        if (!res.ok) return false;
-        const data = await res.json();
-        if (data && Array.isArray(data.items) && data.items.length > 0) {
-          const remoteTs = typeof data.updatedAt === 'number' ? data.updatedAt : 0;
-          if (remoteTs < lastLocalMutationAt) {
-            return false;
-          }
-          const normalizedRemote = normalizeCharactersArray(data.items);
-          const mergedChars = mergeCharactersLists(state.characters, normalizedRemote, false);
-          if (JSON.stringify(mergedChars) !== JSON.stringify(state.characters)) {
-            state.characters = mergedChars;
-            lastLocalMutationAt = Math.max(lastLocalMutationAt, remoteTs);
-            try {
-              localStorage.setItem(STORAGE_KEY_MUTATION_TS, String(lastLocalMutationAt));
-            } catch (e) {}
-            return true;
-          }
-        }
-      } catch (e) {}
-      return false;
-    }
-
-    async function flushRemotePushNow() {
-      const dbUrl = getNormalizedDatabaseURL();
-      if (!dbUrl) return;
-      try {
-        const res = await fetch(`${dbUrl}/monsunoVaultShared.json`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(buildSharedPayload())
-        });
-        updateLiveSyncButton(res.ok);
-      } catch (e) {
-        updateLiveSyncButton(false);
-      }
-    }
-
-    async function patchRemoteSlotAndDecision(userKey, charId, slotKey, slotObj, decObj, queueSnapshot, dismissedIdsSnapshot) {
-      const dbUrl = getNormalizedDatabaseURL();
-      if (!dbUrl) return;
-      const safeU = encodeURIComponent(userKey);
-      const safeC = encodeURIComponent(charId);
-      const safeS = encodeURIComponent(slotKey);
-      const decKey = encodeURIComponent(makeSlotDecisionKey(userKey, charId, slotKey));
-      const nowTs = Math.max(lastLocalMutationAt || 0, lastQueueMutationAt || 0, Date.now());
-      try {
-        await Promise.all([
-          fetch(`${dbUrl}/monsunoVaultShared/userCollections/${safeU}/${safeC}/${safeS}.json`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(slotObj)
-          }),
-          fetch(`${dbUrl}/monsunoVaultShared/slotDecisions/${decKey}.json`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(decObj)
-          }),
-          fetch(`${dbUrl}/monsunoVaultShared/queue.json`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(queueSnapshot)
-          }),
-          fetch(`${dbUrl}/monsunoVaultShared/dismissedQueueIds.json`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(dismissedIdsSnapshot)
-          }),
-          fetch(`${dbUrl}/monsunoVaultShared/updatedAt.json`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(nowTs)
-          }),
-          fetch(`${dbUrl}/monsunoVaultShared/queueUpdatedAt.json`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(nowTs)
-          })
-        ]);
-      } catch (e) {}
-    }
-
-    function scheduleRemotePush() {
-      const dbUrl = getNormalizedDatabaseURL();
-      if (!dbUrl) return;
-      clearTimeout(pushDebounceTimer);
-      pushDebounceTimer = setTimeout(() => {
-        flushRemotePushNow();
-      }, 150);
-    }
-
-    let isPullingRemote = false;
-    async function pullRemoteSharedState(showAlertOnFirst = false, forceInitial = false) {
-      const dbUrl = getNormalizedDatabaseURL();
-      if (!dbUrl || isPullingRemote) return;
-      isPullingRemote = true;
-      try {
-        const dedicatedCharsUpdated = await pullCharactersDedicated();
-        const res = await fetch(`${dbUrl}/monsunoVaultShared.json`, { cache: 'no-store' });
-        if (!res.ok) {
-          updateLiveSyncButton(false);
-          return;
-        }
-        updateLiveSyncButton(true);
-        const remote = await res.json();
-        if (!remote || typeof remote !== 'object') {
-          if (state.characters.length > 0 || state.users.length > 1 || state.queue.length > 0) {
-            scheduleRemotePush();
-          }
-          return;
-        }
-
-        const remoteTs = typeof remote.updatedAt === 'number' ? remote.updatedAt : 0;
-        const remoteQueueTs = typeof remote.queueUpdatedAt === 'number' ? remote.queueUpdatedAt : remoteTs;
-        const localIsNewer = !forceInitial && remoteTs > 0 && remoteTs < lastLocalMutationAt;
-
-        let changed = dedicatedCharsUpdated;
-        if (!localIsNewer && Array.isArray(remote.users) && remote.users.length) {
-          let mergedUsers = remote.users.slice();
-          if (!mergedUsers.some(u => (u.username || '').toLowerCase() === OWNER_USERNAME)) {
-            mergedUsers.unshift({ ...DEFAULT_OWNER_USER });
-          }
-          if (JSON.stringify(mergedUsers) !== JSON.stringify(state.users)) {
-            state.users = mergedUsers;
-            changed = true;
-          }
-        }
-        if (!dedicatedCharsUpdated && Array.isArray(remote.characters) && remote.characters.length > 0) {
-          const mergedChars = mergeCharactersLists(state.characters, remote.characters, localIsNewer);
-          if (JSON.stringify(mergedChars) !== JSON.stringify(state.characters)) {
-            state.characters = mergedChars;
-            changed = true;
-          }
-        }
-        if (Array.isArray(remote.dismissedQueueIds)) {
-          const mergedDismissed = Array.from(new Set([
-            ...(Array.isArray(state.dismissedQueueIds) ? state.dismissedQueueIds.map(String) : []),
-            ...remote.dismissedQueueIds.map(String)
-          ])).slice(-500);
-          if (JSON.stringify(mergedDismissed) !== JSON.stringify(state.dismissedQueueIds || [])) {
-            state.dismissedQueueIds = mergedDismissed;
-            changed = true;
-          }
-        }
-        const dismissedSet = new Set(Array.isArray(state.dismissedQueueIds) ? state.dismissedQueueIds.map(String) : []);
-
-        if (remote.slotDecisions && typeof remote.slotDecisions === 'object') {
-          const mergedDecisions = { ...(state.slotDecisions || {}) };
-          Object.entries(remote.slotDecisions).forEach(([k, v]) => {
-            if (!v || typeof v !== 'object') return;
-            const prev = mergedDecisions[k];
-            if (!prev || Number(v.ts || 0) >= Number(prev.ts || 0)) {
-              mergedDecisions[k] = { ...v };
-            }
-          });
-          if (JSON.stringify(mergedDecisions) !== JSON.stringify(state.slotDecisions || {})) {
-            state.slotDecisions = mergedDecisions;
-            changed = true;
-          }
-        }
-
-        if (remote.userCollections && typeof remote.userCollections === 'object') {
-          const mergedCollections = { ...remote.userCollections };
-          const allUserKeys = new Set([
-            ...Object.keys(remote.userCollections || {}),
-            ...Object.keys(state.userCollections || {})
-          ]);
-
-          allUserKeys.forEach(uKey => {
-            const localUserCol = state.userCollections[uKey] || {};
-            const remoteUserCol = remote.userCollections[uKey] || {};
-            const nextUserCol = { ...remoteUserCol };
-            const allCharIds = new Set([
-              ...Object.keys(remoteUserCol),
-              ...Object.keys(localUserCol)
-            ]);
-
-            allCharIds.forEach(cId => {
-              const localCharSlots = localUserCol[cId] || {};
-              const remoteCharSlots = remoteUserCol[cId] || {};
-              const nextCharSlots = { ...remoteCharSlots };
-              const allSlotKeys = new Set([
-                ...Object.keys(remoteCharSlots),
-                ...Object.keys(localCharSlots)
-              ]);
-
-              allSlotKeys.forEach(sKey => {
-                const localSlot = localCharSlots[sKey];
-                const remoteSlot = remoteCharSlots[sKey];
-                const decKey = makeSlotDecisionKey(uKey, cId, sKey);
-                const recDec = state.slotDecisions?.[decKey];
-                const getSlotTs = (s) => Number(
-                  s?.rejectedAt || s?.revokedAt || s?.approvedAt || s?.submittedAt || 0
-                );
-                const localTs = getSlotTs(localSlot);
-                const remoteTsSlot = getSlotTs(remoteSlot);
-
-                if (localSlot && !remoteSlot) {
-                  nextCharSlots[sKey] = { ...localSlot };
-                } else if (remoteSlot && !localSlot) {
-                  nextCharSlots[sKey] = { ...remoteSlot };
-                } else if (localSlot && remoteSlot) {
-                  const chosen = remoteTsSlot > localTs
-                    ? { ...remoteSlot }
-                    : localTs > remoteTsSlot
-                      ? { ...localSlot }
-                      : (() => {
-                          const priority = { rejected: 4, revoked: 4, approved: 3, pending: 2, none: 1 };
-                          const pLocal = priority[localSlot.status] || 0;
-                          const pRemote = priority[remoteSlot.status] || 0;
-                          return pRemote >= pLocal ? { ...remoteSlot } : { ...localSlot };
-                        })();
-                  if (!isValidPhotoDataOrUrl(chosen.photo)) {
-                    const bestPhoto = (isValidPhotoDataOrUrl(localSlot.photo) ? localSlot.photo : '') ||
-                      (isValidPhotoDataOrUrl(remoteSlot.photo) ? remoteSlot.photo : '');
-                    if (bestPhoto) chosen.photo = bestPhoto;
-                  }
-                  nextCharSlots[sKey] = chosen;
-                }
-
-                if (
-                  recDec &&
-                  (recDec.status === 'rejected' || recDec.status === 'revoked') &&
-                  nextCharSlots[sKey]?.status === 'pending' &&
-                  Number(recDec.ts || 0) >= Number(nextCharSlots[sKey]?.submittedAt || 0)
-                ) {
-                  nextCharSlots[sKey] = {
-                    status: recDec.status,
-                    [recDec.status === 'rejected' ? 'rejectedAt' : 'revokedAt']: Number(recDec.ts || Date.now())
-                  };
-                }
-              });
-              nextUserCol[cId] = nextCharSlots;
-            });
-            mergedCollections[uKey] = nextUserCol;
-          });
-
-          if (JSON.stringify(mergedCollections) !== JSON.stringify(state.userCollections)) {
-            state.userCollections = mergedCollections;
-            changed = true;
-          }
-        }
-
-        applyRecordedDecisionsToCollections();
-
-        if (Array.isArray(remote.queue)) {
-          const filteredRemoteQueue = deduplicateQueueItems(remote.queue, state.dismissedQueueIds, state.slotDecisions).filter(req => {
-            if (!req || !req.id || dismissedSet.has(String(req.id))) return false;
-            const uKey = String(req.username || '').trim().toLowerCase();
-            const decKey = makeSlotDecisionKey(uKey, req.charId, req.slotKey);
-            const recDec = state.slotDecisions?.[decKey];
-            const slotObj = state.userCollections[uKey]?.[req.charId]?.[req.slotKey];
-            const reqTs = Number(req.submittedAt || 0);
-            if (
-              recDec &&
-              (recDec.status === 'approved' || recDec.status === 'rejected' || recDec.status === 'revoked') &&
-              Number(recDec.ts || 0) >= reqTs
-            ) {
-              return false;
-            }
-            if (!slotObj) return true;
-            if (slotObj.status === 'approved' || slotObj.status === 'rejected' || slotObj.status === 'revoked') {
-              const decisionTs = Number(slotObj.approvedAt || slotObj.rejectedAt || slotObj.revokedAt || 0);
-              if (decisionTs >= reqTs) return false;
-            }
-            return true;
-          });
-
-          const mergedQueue = deduplicateQueueItems(
-            [...(state.queue || []), ...filteredRemoteQueue],
-            state.dismissedQueueIds,
-            state.slotDecisions
-          ).map(item => {
-            if (!isValidPhotoDataOrUrl(item.photo)) {
-              const recoveredPhoto = resolveQueuePhotoSrc(item);
-              if (recoveredPhoto) {
-                return { ...item, photo: recoveredPhoto };
-              }
-            }
-            return item;
-          });
-
-          if (JSON.stringify(mergedQueue) !== JSON.stringify(state.queue)) {
-            state.queue = mergedQueue;
-            lastQueueMutationAt = Math.max(lastQueueMutationAt, remoteQueueTs);
-            changed = true;
-          }
-        }
-        if (!localIsNewer && Array.isArray(remote.chat) && JSON.stringify(remote.chat) !== JSON.stringify(state.chat)) {
-          state.chat = remote.chat;
-          changed = true;
-        }
-        if (!localIsNewer && Array.isArray(remote.photoChat) && JSON.stringify(remote.photoChat) !== JSON.stringify(state.photoChat)) {
-          state.photoChat = remote.photoChat;
-          changed = true;
-        }
-        if (!localIsNewer && Array.isArray(remote.market) && JSON.stringify(remote.market) !== JSON.stringify(state.market)) {
-          state.market = remote.market;
-          changed = true;
-        }
-        if (!localIsNewer && Array.isArray(remote.tickets) && JSON.stringify(remote.tickets) !== JSON.stringify(state.tickets)) {
-          state.tickets = remote.tickets;
-          changed = true;
-        }
-        if (!localIsNewer && Array.isArray(remote.reports) && JSON.stringify(remote.reports) !== JSON.stringify(state.reports)) {
-          state.reports = remote.reports;
-          changed = true;
-        }
-
-        if (changed) {
-          saveState(false);
-        } else if (showAlertOnFirst) {
-          showToast('Canlı veritabanı ile eşleşti.');
-        }
-      } catch (e) {
-        updateLiveSyncButton(false);
-      } finally {
-        isPullingRemote = false;
-      }
-    }
-
-    async function translateViaMyMemory(text, targetLang) {
-      const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=autodetect|${encodeURIComponent(targetLang)}`;
-      const res = await fetch(url);
-      if (!res.ok) throw new Error('MyMemory HTTP ' + res.status);
-      const data = await res.json();
-      const translated = data?.responseData?.translatedText;
-      if (!translated || /INVALID LANGUAGE PAIR|MYMEMORY WARNING/i.test(translated)) {
-        throw new Error('MyMemory invalid translation');
-      }
-      return translated.trim();
-    }
-
-    async function translateViaGooglePublic(text, targetLang) {
-      const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${encodeURIComponent(targetLang)}&dt=t&q=${encodeURIComponent(text)}`;
-      const res = await fetch(url);
-      if (!res.ok) throw new Error('Google Public HTTP ' + res.status);
-      const data = await res.json();
-      const segments = Array.isArray(data?.[0]) ? data[0] : [];
-      const translated = segments.map(s => (Array.isArray(s) ? s[0] : '')).join('').trim();
-      if (!translated) throw new Error('Empty Google Public translation');
-      return translated;
-    }
-
-    async function translateViaLibre(text, targetLang) {
-      const res = await fetch('https://libretranslate.de/translate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          q: text,
-          source: 'auto',
-          target: targetLang,
-          format: 'text'
-        })
-      });
-      if (!res.ok) throw new Error('LibreTranslate HTTP ' + res.status);
-      const data = await res.json();
-      const translated = (data?.translatedText || '').trim();
-      if (!translated) throw new Error('Empty LibreTranslate translation');
-      return translated;
-    }
-
-    async function translateDynamicText(cacheKey, text) {
-      if (!text) return;
-      const lang = TRANSLATIONS[state.lang] ? state.lang : 'tr';
-      const targetLangName = TRANSLATIONS[lang].langName || 'Turkish';
-      const fullKey = `${lang}::${cacheKey}`;
-
-      state.translationsCache[fullKey] = { loading: true, text: '' };
-      rerenderActiveDynamicViews();
-
-      const prompt = `Translate the following user message into ${targetLangName}. Keep Monsuno character names (like LOCK, EVO, CHARGER) unchanged. Return ONLY the translated text without quotes or extra explanation:\n\n${text}`;
-      const apiKey = "";
-      const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`;
-
-      let delay = 1000;
-      for (let attempt = 0; attempt < 3; attempt++) {
-        try {
-          const response = await fetch(apiUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              contents: [{ parts: [{ text: prompt }] }]
-            })
-          });
-          if (!response.ok) throw new Error('HTTP ' + response.status);
-          const result = await response.json();
-          const translated = result?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
-          if (translated) {
-            state.translationsCache[fullKey] = { loading: false, text: translated };
-            rerenderActiveDynamicViews();
-            return;
-          }
-        } catch (err) {
-          if (attempt < 2) {
-            await new Promise(r => setTimeout(r, delay));
-            delay *= 2;
-          }
-        }
+      if (badgeEl) {
+        const sizeKb = Math.max(1, Math.round(file.size / 1024));
+        badgeEl.textContent = `Seçilen fotoğraf: ${file.name} (${sizeKb} KB)`;
+        badgeEl.classList.remove('hidden');
       }
 
-      const providers = [
-        () => translateViaGooglePublic(text, lang),
-        () => translateViaMyMemory(text, lang),
-        () => translateViaLibre(text, lang)
-      ];
+      const rawDataUrl = await readRawFileAsDataUrl(file);
+      if (pendingVerifyFileDrafts[draftKey] !== file) return;
 
-      for (const providerFn of providers) {
-        try {
-          const translated = await providerFn();
-          if (translated) {
-            state.translationsCache[fullKey] = { loading: false, text: translated };
-            rerenderActiveDynamicViews();
-            return;
-          }
-        } catch (e) {}
-      }
-
-      state.translationsCache[fullKey] = {
-        loading: false,
-        text: text
-      };
-      rerenderActiveDynamicViews();
-      showToast('Çeviri servisine ulaşılamadı; orijinal metin gösteriliyor.');
-    }
-
-    function escapeAttr(str) {
-      return escapeHTML(JSON.stringify(String(str || '')));
-    }
-
-    function triggerTranslate(kind, id) {
-      const lang = TRANSLATIONS[state.lang] ? state.lang : 'tr';
-      let cacheId = '';
-      if (kind === 'chat') {
-        const msg = state.chat.find(m => m.id === id);
-        if (!msg) return;
-        cacheId = `chat-${msg.id}`;
-        const fullKey = `${lang}::${cacheId}`;
-        if (state.translationsCache[fullKey] && !state.translationsCache[fullKey].loading) {
-          delete state.translationsCache[fullKey];
-          rerenderActiveDynamicViews();
-          return;
+      if (rawDataUrl && rawDataUrl.startsWith('data:')) {
+        pendingVerifyPreviewUrls[draftKey] = rawDataUrl;
+        if (previewWrapEl && previewImgEl) {
+          previewImgEl.removeAttribute('src');
+          previewImgEl.src = rawDataUrl;
+          previewWrapEl.classList.remove('hidden');
+          previewWrapEl.classList.add('border-emerald-500/40');
+          previewWrapEl.classList.remove('border-slate-800/80');
         }
-        translateDynamicText(cacheId, msg.text);
-      } else if (kind === 'photo-chat') {
-        const item = state.photoChat.find(p => p.id === id);
-        if (!item || !item.caption) return;
-        cacheId = `pchat-${item.id}`;
-        const fullKey = `${lang}::${cacheId}`;
-        if (state.translationsCache[fullKey] && !state.translationsCache[fullKey].loading) {
-          delete state.translationsCache[fullKey];
-          rerenderActiveDynamicViews();
-          return;
-        }
-        translateDynamicText(cacheId, item.caption);
-      } else if (kind === 'market') {
-        const item = state.market.find(l => l.id === id);
-        if (!item) return;
-        cacheId = `lst-${item.id}`;
-        const fullKey = `${lang}::${cacheId}`;
-        if (state.translationsCache[fullKey] && !state.translationsCache[fullKey].loading) {
-          delete state.translationsCache[fullKey];
-          rerenderActiveDynamicViews();
-          return;
-        }
-        translateDynamicText(cacheId, `${item.title}${item.desc ? ' — ' + item.desc : ''}`);
+        if (previewTagEl) previewTagEl.classList.remove('hidden');
+      } else if (previewWrapEl && previewImgEl) {
+        previewImgEl.removeAttribute('src');
+        previewWrapEl.classList.add('hidden');
+        if (previewTagEl) previewTagEl.classList.add('hidden');
       }
-    }
 
-    function triggerReport(targetType, targetId) {
-      if (targetType === 'chat') {
-        const msg = state.chat.find(m => m.id === targetId);
-        if (msg) reportContent('chat', msg.id, `${msg.displayName} (@${msg.username}): ${msg.text}`);
-      } else if (targetType === 'photo-chat') {
-        const item = state.photoChat.find(p => p.id === targetId);
-        if (item) reportContent('photo-chat', item.id, `${item.displayName} (@${item.username}): ${item.caption || 'Monsuno'}`);
-      } else if (targetType === 'market') {
-        const item = state.market.find(l => l.id === targetId);
-        if (item) reportContent('market', item.id, `${item.title} (${item.ownerDisplayName})`);
-      }
-    }
-
-    function rerenderActiveDynamicViews() {
-      if (state.activeSection === 'chat') renderChat();
-      if (state.activeSection === 'photo-chat') renderPhotoChat();
-      if (state.activeSection === 'market') renderMarket();
-    }
-
-    function persistCharactersNow(chars) {
-      const safeChars = normalizeCharactersArray(chars);
-      state.characters = safeChars;
-      syncCharImagesMap(safeChars);
-      try {
-        localStorage.setItem(STORAGE_KEY_CHARACTERS, JSON.stringify(safeChars));
-        localStorage.setItem('mv3_characters', JSON.stringify(safeChars));
-        if (state.user && isOwner(state.user.username)) {
-          localStorage.setItem(STORAGE_KEY_OWNER_CHAR_SNAPSHOT, JSON.stringify(safeChars));
-        }
-      } catch (e) {}
-    }
-
-    function saveState(syncRemote = true, syncChars = false, queueChanged = false) {
-      markLocalMutation(queueChanged);
-      persistCharactersNow(state.characters);
-      applyRecordedDecisionsToCollections();
-      state.queue = deduplicateQueueItems(state.queue, state.dismissedQueueIds, state.slotDecisions);
-      try {
-        localStorage.setItem('mv3_lang', state.lang);
-        localStorage.setItem('mv3_current_user', JSON.stringify(state.user));
-        localStorage.setItem('mv3_users', JSON.stringify(state.users));
-        localStorage.setItem('mv3_user_collections', JSON.stringify(state.userCollections));
-        localStorage.setItem(STORAGE_KEY_DECISIONS, JSON.stringify(state.slotDecisions || {}));
-        localStorage.setItem('mv3_queue', JSON.stringify(state.queue));
-        localStorage.setItem('mv3_dismissed_queue_ids', JSON.stringify(state.dismissedQueueIds || []));
-        localStorage.setItem('mv3_chat', JSON.stringify(state.chat));
-        localStorage.setItem('mv3_photo_chat', JSON.stringify(state.photoChat));
-        localStorage.setItem('mv3_market', JSON.stringify(state.market));
-        localStorage.setItem('mv3_tickets', JSON.stringify(state.tickets));
-        localStorage.setItem('mv3_reports', JSON.stringify(state.reports));
-        localStorage.setItem('mv3_active_section', JSON.stringify(state.activeSection));
-        localStorage.setItem('mv3_faction_filter', JSON.stringify(state.activeFactionFilter));
-        localStorage.setItem('mv3_ticked_filter', JSON.stringify(state.activeTickedFilter));
-        localStorage.setItem('mv3_market_filter', JSON.stringify(state.activeMarketFilter));
-      } catch (e) {
-        try {
-          persistCharactersNow(state.characters);
-          localStorage.setItem('mv3_user_collections', JSON.stringify(state.userCollections));
-          localStorage.setItem('mv3_queue', JSON.stringify(state.queue));
-        } catch (err) {}
-      }
-      broadcastInstantUpdate();
-      refreshAllVisibleViews();
-      if (syncChars) {
-        pushCharactersDedicated();
-      }
-      if (syncRemote) {
-        if (queueChanged) {
-          flushRemotePushNow();
-        } else {
-          scheduleRemotePush();
-        }
-      }
-    }
-
-    function switchAuthTab(tab) {
-      const isLogin = tab === 'login';
-      document.getElementById('login-form').classList.toggle('hidden', !isLogin);
-      document.getElementById('register-form').classList.toggle('hidden', isLogin);
-      document.getElementById('auth-tab-login').className = isLogin
-        ? 'py-2 rounded-xl text-xs font-extrabold bg-core-600 text-white transition'
-        : 'py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white transition';
-      document.getElementById('auth-tab-register').className = !isLogin
-        ? 'py-2 rounded-xl text-xs font-extrabold bg-emerald-500 text-slate-950 transition'
-        : 'py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white transition';
+      updateBulkVerifyButtonVisibility(charId);
     }
 
     function isOwner(username) {
@@ -3760,6 +3362,9 @@
         const draftKey = getVerifyDraftKey(char.id, s.key);
         const draftFile = pendingVerifyFileDrafts[draftKey] || null;
         const draftPreviewUrl = pendingVerifyPreviewUrls[draftKey] || '';
+        const existingPhotoUrl = isValidPhotoDataOrUrl(slotData.photo) ? slotData.photo.trim() : '';
+        const activePreviewSrc = (draftFile && draftPreviewUrl) ? draftPreviewUrl : existingPhotoUrl;
+        const isNewDraftPreview = Boolean(draftFile && draftPreviewUrl);
         const statusText = slotData.status === 'approved'
           ? '<span class="text-emerald-400 font-bold">Onaylı (✓)</span>'
           : slotData.status === 'pending'
@@ -3774,16 +3379,11 @@
               <span class="text-xs font-extrabold text-white">${s.label}</span>
               <span class="text-xs">${statusText}</span>
             </div>
-            ${isValidPhotoDataOrUrl(slotData.photo) ? `
-              <div class="w-full h-28 rounded-xl bg-slate-900 border border-slate-800/80 flex items-center justify-center overflow-hidden">
-                <img src="${escapeHTML(slotData.photo)}" alt="${escapeHTML(s.label)}" class="w-full h-full object-contain p-1.5" />
-              </div>
-            ` : ''}
-            <div id="verify-draft-preview-wrap-${s.key}" class="${draftFile && draftPreviewUrl ? '' : 'hidden '}w-full h-28 rounded-xl bg-slate-900 border border-emerald-500/40 flex items-center justify-center overflow-hidden relative">
-              <img id="verify-draft-preview-img-${s.key}" src="${draftFile && draftPreviewUrl ? escapeHTML(draftPreviewUrl) : ''}" alt=""
-                onerror="this.parentElement.classList.add('hidden');"
+            <div id="verify-draft-preview-wrap-${s.key}" class="${activePreviewSrc ? '' : 'hidden '}w-full h-28 rounded-xl bg-slate-900 border ${isNewDraftPreview ? 'border-emerald-500/40' : 'border-slate-800/80'} flex items-center justify-center overflow-hidden relative">
+              <img id="verify-draft-preview-img-${s.key}" src="${activePreviewSrc ? escapeHTML(activePreviewSrc) : ''}" alt="${escapeHTML(s.label)}"
+                onerror="this.removeAttribute('src');this.parentElement.classList.add('hidden');"
                 class="w-full h-full object-contain p-1.5" />
-              <span class="pointer-events-none absolute top-1.5 left-2 px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[10px] font-extrabold">
+              <span id="verify-draft-tag-${s.key}" class="${isNewDraftPreview ? '' : 'hidden '}pointer-events-none absolute top-1.5 left-2 px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[10px] font-extrabold">
                 SEÇİLEN FOTOĞRAF
               </span>
             </div>
