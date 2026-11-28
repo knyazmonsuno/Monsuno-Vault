@@ -1788,6 +1788,12 @@
             status: 'revoked',
             revokedAt: decTs
           };
+        } else if (dec.status === 'pending' && (!currentSlot || decTs > currentTs)) {
+          state.userCollections[uKey][cId][sKey] = {
+            ...(currentSlot || {}),
+            status: 'pending',
+            submittedAt: decTs
+          };
         } else if (!currentSlot && (dec.status === 'rejected' || dec.status === 'revoked')) {
           state.userCollections[uKey][cId][sKey] = {
             status: dec.status,
@@ -2409,6 +2415,50 @@
       }
     }
 
+    async function patchRemoteSlotAndDecision(userKey, charId, slotKey, slotObj, decObj, queueSnapshot, dismissedIdsSnapshot) {
+      const dbUrl = getNormalizedDatabaseURL();
+      if (!dbUrl) return;
+      const safeU = encodeURIComponent(userKey);
+      const safeC = encodeURIComponent(charId);
+      const safeS = encodeURIComponent(slotKey);
+      const decKey = encodeURIComponent(makeSlotDecisionKey(userKey, charId, slotKey));
+      const nowTs = Math.max(lastLocalMutationAt || 0, lastQueueMutationAt || 0, Date.now());
+      try {
+        await Promise.all([
+          fetch(`${dbUrl}/monsunoVaultShared/userCollections/${safeU}/${safeC}/${safeS}.json`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(slotObj)
+          }),
+          fetch(`${dbUrl}/monsunoVaultShared/slotDecisions/${decKey}.json`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(decObj)
+          }),
+          fetch(`${dbUrl}/monsunoVaultShared/queue.json`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(queueSnapshot)
+          }),
+          fetch(`${dbUrl}/monsunoVaultShared/dismissedQueueIds.json`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(dismissedIdsSnapshot)
+          }),
+          fetch(`${dbUrl}/monsunoVaultShared/updatedAt.json`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(nowTs)
+          }),
+          fetch(`${dbUrl}/monsunoVaultShared/queueUpdatedAt.json`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(nowTs)
+          })
+        ]);
+      } catch (e) {}
+    }
+
     function scheduleRemotePush() {
       const dbUrl = getNormalizedDatabaseURL();
       if (!dbUrl) return;
@@ -2951,11 +3001,13 @@
       const { userKey, baseUserCol, mergedCharEntry } = getActiveUserCollectionEntry(state.user.username, charId);
 
       if (isOwner(state.user.username)) {
+        const approvedTs = recordSlotDecision(userKey, charId, slotKey, 'approved', Date.now());
+        const slotPayload = { status: 'approved', photo: null, approvedAt: approvedTs };
         state.userCollections[userKey] = {
           ...baseUserCol,
           [charId]: {
             ...mergedCharEntry,
-            [slotKey]: { status: 'approved', photo: null, approvedAt: Date.now() }
+            [slotKey]: slotPayload
           }
         };
         state.queue = deduplicateQueueItems(state.queue).filter(
@@ -2966,6 +3018,15 @@
           )
         );
         saveState(true, false, true);
+        patchRemoteSlotAndDecision(
+          userKey,
+          charId,
+          slotKey,
+          slotPayload,
+          state.slotDecisions[makeSlotDecisionKey(userKey, charId, slotKey)],
+          state.queue,
+          state.dismissedQueueIds || []
+        );
         updateStats();
         renderCollection();
         openVerifyModal(charId);
@@ -2986,12 +3047,15 @@
           showToast('Bu dosya formatı tarayıcı tarafından okunamadı. Lütfen JPG, PNG veya WEBP fotoğraf seçin.');
           return;
         }
-        const reqId = 'req-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
+        const submittedTs = recordSlotDecision(userKey, charId, slotKey, 'pending', Date.now());
+        const reqId = 'req-' + submittedTs + '-' + Math.random().toString(36).slice(2, 6);
+        const slotPayload = { status: 'pending', photo: photoData, submittedAt: submittedTs };
+        const latestColSnapshot = getActiveUserCollectionEntry(state.user.username, charId);
         state.userCollections[userKey] = {
-          ...baseUserCol,
+          ...latestColSnapshot.baseUserCol,
           [charId]: {
-            ...mergedCharEntry,
-            [slotKey]: { status: 'pending', photo: photoData, submittedAt: Date.now() }
+            ...latestColSnapshot.mergedCharEntry,
+            [slotKey]: slotPayload
           }
         };
         const latestDiskQueue = deduplicateQueueItems(loadJSON('mv3_queue', []));
@@ -3015,12 +3079,21 @@
             slotKey,
             slotLabel,
             photo: photoData,
-            submittedAt: Date.now()
+            submittedAt: submittedTs
           },
           ...existingQueue
         ]);
         if (fileInput) fileInput.value = '';
         saveState(true, false, true);
+        patchRemoteSlotAndDecision(
+          userKey,
+          charId,
+          slotKey,
+          slotPayload,
+          state.slotDecisions[makeSlotDecisionKey(userKey, charId, slotKey)],
+          state.queue,
+          state.dismissedQueueIds || []
+        );
         updateStats();
         renderCollection();
         openVerifyModal(charId);
@@ -4323,15 +4396,26 @@
       }
       const userKey = String(req.username || '').trim().toLowerCase();
       const resolvedPhoto = resolveQueuePhotoSrc(req);
-      if (!state.userCollections[userKey]) state.userCollections[userKey] = {};
-      if (!state.userCollections[userKey][req.charId]) state.userCollections[userKey][req.charId] = {};
-      state.userCollections[userKey][req.charId][req.slotKey] = {
+      const approvedAt = recordSlotDecision(userKey, req.charId, req.slotKey, 'approved', Date.now());
+      const slotPayload = {
         status: 'approved',
         photo: resolvedPhoto || null,
-        approvedAt: Date.now()
+        approvedAt
       };
+      if (!state.userCollections[userKey]) state.userCollections[userKey] = {};
+      if (!state.userCollections[userKey][req.charId]) state.userCollections[userKey][req.charId] = {};
+      state.userCollections[userKey][req.charId][req.slotKey] = slotPayload;
       removeResolvedFromQueue(reqId, req);
       saveState(true, false, true);
+      patchRemoteSlotAndDecision(
+        userKey,
+        req.charId,
+        req.slotKey,
+        slotPayload,
+        state.slotDecisions[makeSlotDecisionKey(userKey, req.charId, req.slotKey)],
+        state.queue,
+        state.dismissedQueueIds || []
+      );
       flushRemotePushNow();
       updateStats();
       renderAdmin();
@@ -4340,18 +4424,32 @@
 
     function rejectQueueItem(reqId) {
       const req = state.queue.find(r => String(r.id) === String(reqId));
+      let patchArgs = null;
       if (req) {
         const userKey = String(req.username || '').trim().toLowerCase();
         const rejectedAt = recordSlotDecision(userKey, req.charId, req.slotKey, 'rejected', Date.now());
-        if (!state.userCollections[userKey]) state.userCollections[userKey] = {};
-        if (!state.userCollections[userKey][req.charId]) state.userCollections[userKey][req.charId] = {};
-        state.userCollections[userKey][req.charId][req.slotKey] = {
+        const slotPayload = {
           status: 'rejected',
           rejectedAt
         };
+        if (!state.userCollections[userKey]) state.userCollections[userKey] = {};
+        if (!state.userCollections[userKey][req.charId]) state.userCollections[userKey][req.charId] = {};
+        state.userCollections[userKey][req.charId][req.slotKey] = slotPayload;
+        patchArgs = { userKey, charId: req.charId, slotKey: req.slotKey, slotPayload };
       }
       removeResolvedFromQueue(reqId, req || { id: reqId });
       saveState(true, false, true);
+      if (patchArgs) {
+        patchRemoteSlotAndDecision(
+          patchArgs.userKey,
+          patchArgs.charId,
+          patchArgs.slotKey,
+          patchArgs.slotPayload,
+          state.slotDecisions[makeSlotDecisionKey(patchArgs.userKey, patchArgs.charId, patchArgs.slotKey)],
+          state.queue,
+          state.dismissedQueueIds || []
+        );
+      }
       flushRemotePushNow();
       updateStats();
       renderAdmin();
