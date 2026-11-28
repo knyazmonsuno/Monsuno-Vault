@@ -1876,6 +1876,7 @@
     let lastQueueMutationAt = Number(localStorage.getItem(STORAGE_KEY_QUEUE_TS) || 0);
     let isLiveSyncConnected = false;
     let remotePushTimer = null;
+    let isRemotePullInFlight = false;
     const pendingVerifyFileDrafts = {};
     const pendingVerifyPreviewUrls = {};
 
@@ -2243,7 +2244,7 @@
             clearTimeout(remotePushTimer);
             remotePushTimer = setTimeout(() => {
               flushRemotePushNow();
-            }, 250);
+            }, 80);
           }
         }
       } catch (e) {}
@@ -2259,25 +2260,29 @@
         await fetch(`${dbUrl}/mv3_vault/userCollections/${safeUser}/${safeChar}/${safeSlot}.json`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(slotPayload || null)
+          body: JSON.stringify(slotPayload || null),
+          keepalive: true
         });
         if (decObj) {
           const decKey = encodeURIComponent(makeSlotDecisionKey(userKey, charId, slotKey));
           await fetch(`${dbUrl}/mv3_vault/slotDecisions/${decKey}.json`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(decObj)
+            body: JSON.stringify(decObj),
+            keepalive: true
           });
         }
         await fetch(`${dbUrl}/mv3_vault/queue.json`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(Array.isArray(nextQueue) ? nextQueue : [])
+          body: JSON.stringify(Array.isArray(nextQueue) ? nextQueue : []),
+          keepalive: true
         });
         await fetch(`${dbUrl}/mv3_vault/dismissedQueueIds.json`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(Array.isArray(dismissedIds) ? dismissedIds : [])
+          body: JSON.stringify(Array.isArray(dismissedIds) ? dismissedIds : []),
+          keepalive: true
         });
       } catch (e) {}
     }
@@ -2291,11 +2296,52 @@
         const res = await fetch(`${dbUrl}/mv3_vault.json`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
+          body: JSON.stringify(payload),
+          keepalive: true
         });
         updateLiveSyncButton(res.ok);
       } catch (e) {
         updateLiveSyncButton(false);
+      }
+    }
+
+    async function pullRemoteSharedState(showStatus = false, isInitialBoot = false) {
+      const dbUrl = getNormalizedDatabaseURL();
+      if (!dbUrl) {
+        updateLiveSyncButton(false);
+        return;
+      }
+      if (isRemotePullInFlight && !isInitialBoot) return;
+      isRemotePullInFlight = true;
+      try {
+        const cacheBust = `_t=${Date.now()}`;
+        const res = await fetch(`${dbUrl}/mv3_vault.json?${cacheBust}`, {
+          cache: 'no-store',
+          headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate' }
+        });
+        if (!res.ok) {
+          updateLiveSyncButton(false);
+          return;
+        }
+        updateLiveSyncButton(true);
+        const remote = await res.json();
+        if (!remote || typeof remote !== 'object') {
+          if (isInitialBoot && state.user) {
+            flushRemotePushNow();
+          }
+          return;
+        }
+        const remoteTs = Number(remote.ts || 0);
+        if (remoteTs >= lastLocalMutationAt || isInitialBoot) {
+          applyIncomingInstantSnapshot(remote);
+        }
+        if (showStatus) {
+          showToast('Canlı veriler güncellendi.');
+        }
+      } catch (e) {
+        updateLiveSyncButton(false);
+      } finally {
+        isRemotePullInFlight = false;
       }
     }
 
@@ -2677,6 +2723,76 @@
       return { userKey, baseUserCol, mergedCharEntry };
     }
 
+    function applyInstantOwnerSlotApproval(charId, slotKey, slotLabel, nowTsBase = Date.now()) {
+      if (!state.user || !isOwner(state.user.username)) return false;
+      const char = state.characters.find(c => c.id === charId);
+      if (!char) return false;
+
+      const { userKey, baseUserCol, mergedCharEntry } = getActiveUserCollectionEntry(state.user.username, charId);
+      const approvedTs = recordSlotDecision(userKey, charId, slotKey, 'approved', nowTsBase);
+      const slotPayload = { status: 'approved', photo: null, approvedAt: approvedTs };
+
+      state.userCollections[userKey] = {
+        ...baseUserCol,
+        [charId]: {
+          ...mergedCharEntry,
+          [slotKey]: slotPayload
+        }
+      };
+
+      state.queue = deduplicateQueueItems(state.queue).filter(
+        r => !(
+          String(r.username || '').trim().toLowerCase() === userKey &&
+          String(r.charId || '').trim() === String(charId).trim() &&
+          String(r.slotKey || '').trim().toLowerCase() === String(slotKey).trim().toLowerCase()
+        )
+      );
+
+      saveState(true, false, false);
+      patchRemoteSlotAndDecision(
+        userKey,
+        charId,
+        slotKey,
+        slotPayload,
+        state.slotDecisions[makeSlotDecisionKey(userKey, charId, slotKey)],
+        state.queue,
+        state.dismissedQueueIds || []
+      );
+      return true;
+    }
+
+    function approveAllSlotsWithoutPhoto(charId) {
+      if (!state.user || !isOwner(state.user.username)) return;
+      const char = state.characters.find(c => c.id === charId);
+      if (!char) return;
+
+      const slots = [
+        { key: 'figure', label: 'Figür' },
+        ...(char.noCapsule ? [] : [{ key: 'capsule', label: 'Capsule' }]),
+        { key: 'cards', label: 'Cards' }
+      ];
+
+      const userKey = String(state.user.username || '').trim().toLowerCase();
+      const currentEntry = (state.userCollections[userKey] || {})[charId] || {};
+      const missingSlots = slots.filter(s => currentEntry[s.key]?.status !== 'approved');
+      if (!missingSlots.length) {
+        showToast(`${char.name} zaten tamamen onaylı.`);
+        return;
+      }
+
+      const baseTs = Date.now();
+      missingSlots.forEach((s, idx) => {
+        applyInstantOwnerSlotApproval(charId, s.key, s.label, baseTs + idx);
+      });
+
+      updateStats();
+      if (state.activeSection === 'collection') renderCollection();
+      if (state.activeSection === 'ticked') renderTickedSection();
+      if (state.activeSection === 'leaderboard') renderLeaderboard();
+      openVerifyModal(charId);
+      showToast(`${char.name} için ${missingSlots.length} parça anında onaylandı!`);
+    }
+
     function submitSlotVerification(charId, slotKey, slotLabel) {
       if (isSubmittingVerification) return;
       const char = state.characters.find(c => c.id === charId);
@@ -2685,36 +2801,13 @@
       const { userKey, baseUserCol, mergedCharEntry } = getActiveUserCollectionEntry(state.user.username, charId);
 
       if (isOwner(state.user.username)) {
-        const approvedTs = recordSlotDecision(userKey, charId, slotKey, 'approved', Date.now());
-        const slotPayload = { status: 'approved', photo: null, approvedAt: approvedTs };
-        state.userCollections[userKey] = {
-          ...baseUserCol,
-          [charId]: {
-            ...mergedCharEntry,
-            [slotKey]: slotPayload
-          }
-        };
-        state.queue = deduplicateQueueItems(state.queue).filter(
-          r => !(
-            r.username.toLowerCase() === userKey &&
-            r.charId === charId &&
-            String(r.slotKey || '').toLowerCase() === String(slotKey).toLowerCase()
-          )
-        );
-        saveState(true, false, true);
-        patchRemoteSlotAndDecision(
-          userKey,
-          charId,
-          slotKey,
-          slotPayload,
-          state.slotDecisions[makeSlotDecisionKey(userKey, charId, slotKey)],
-          state.queue,
-          state.dismissedQueueIds || []
-        );
+        applyInstantOwnerSlotApproval(charId, slotKey, slotLabel, Date.now());
         updateStats();
-        renderCollection();
+        if (state.activeSection === 'collection') renderCollection();
+        if (state.activeSection === 'ticked') renderTickedSection();
+        if (state.activeSection === 'leaderboard') renderLeaderboard();
         openVerifyModal(charId);
-        showToast(`${char.name} (${slotLabel}) anında onaylandı ve kaydedildi!`);
+        showToast(`${char.name} (${slotLabel}) anında onaylandı!`);
         return;
       }
 
@@ -3349,6 +3442,14 @@
 
       const adminOwner = isOwner(state.user.username);
       const readyDraftCount = slots.filter(s => Boolean(pendingVerifyFileDrafts[getVerifyDraftKey(char.id, s.key)])).length;
+      const unapprovedCount = slots.filter(s => entry[s.key]?.status !== 'approved').length;
+
+      const adminQuickAllHTML = adminOwner && unapprovedCount > 1 ? `
+        <button type="button" onclick="approveAllSlotsWithoutPhoto('${char.id}')"
+          class="w-full py-2.5 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-xs font-extrabold text-slate-950 shadow-lg transition">
+          ⚡ Tüm Eksik Parçaları (${unapprovedCount}) Fotoğrafsız Anında Onayla
+        </button>
+      ` : '';
 
       const bulkSendHTML = !adminOwner ? `
         <button id="verify-send-all-btn" type="button" onclick="submitAllSelectedVerifications('${char.id}')"
@@ -3357,14 +3458,15 @@
         </button>
       ` : '';
 
-      document.getElementById('verify-slots-container').innerHTML = slots.map(s => {
-        const slotData = entry[s.key] || { status: 'none' };
+      document.getElementById('verify-slots-container').innerHTML = adminQuickAllHTML + slots.map(s => {
         const draftKey = getVerifyDraftKey(char.id, s.key);
         const draftFile = pendingVerifyFileDrafts[draftKey] || null;
-        const draftPreviewUrl = pendingVerifyPreviewUrls[draftKey] || '';
-        const existingPhotoUrl = isValidPhotoDataOrUrl(slotData.photo) ? slotData.photo.trim() : '';
-        const activePreviewSrc = (draftFile && draftPreviewUrl) ? draftPreviewUrl : existingPhotoUrl;
-        const isNewDraftPreview = Boolean(draftFile && draftPreviewUrl);
+        const draftPreviewSrc = pendingVerifyPreviewUrls[draftKey] || '';
+        const slotData = entry[s.key] || { status: 'none' };
+        const existingSlotPhoto = isValidPhotoDataOrUrl(slotData?.photo) ? slotData.photo : '';
+        const activePreviewSrc = draftPreviewSrc || existingSlotPhoto;
+        const isNewDraftPreview = Boolean(draftPreviewSrc);
+
         const statusText = slotData.status === 'approved'
           ? '<span class="text-emerald-400 font-bold">Onaylı (✓)</span>'
           : slotData.status === 'pending'
@@ -4478,6 +4580,19 @@
         }
       });
 
+      window.addEventListener('focus', () => {
+        if (getNormalizedDatabaseURL()) {
+          pullRemoteSharedState(false, false);
+        }
+      });
+
+      window.addEventListener('online', () => {
+        if (getNormalizedDatabaseURL()) {
+          pullRemoteSharedState(false, false);
+          if (state.user) flushRemotePushNow();
+        }
+      });
+
       window.addEventListener('pagehide', () => {
         if (state.user) {
           saveState(false, true);
@@ -4501,7 +4616,7 @@
       setupAutoSaveHooks();
       if (getNormalizedDatabaseURL()) {
         pullRemoteSharedState(false, true);
-        setInterval(() => pullRemoteSharedState(false, false), 1500);
+        setInterval(() => pullRemoteSharedState(false, false), 800);
       }
       if (state.user) {
         bootAuthenticatedApp();
